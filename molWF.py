@@ -1,5 +1,6 @@
 import numpy as np
 
+floatFmtStr = '%05.4E'
 
 
 def getTrioOrder(fmPath,studyID='101'):
@@ -69,26 +70,22 @@ def parseMkGenomeBatch(manPath,fmPath,trioList,genFeatName="BATCH:Genomic"):
 	featHeader = np.array(['N:NB:'+genFeatName+':version','N:M:'+genFeatName+':version','N:F:'+genFeatName+':version','N:NB:'+genFeatName+':shipDate','N:M:'+genFeatName+':shipDate','N:F:'+genFeatName+':shipDate'],dtype=str)
 	nMembers = 3
 	nTrios = len(trioList)
-	fm = np.zeros((nFeat*nMembers,nTrios),dtype=int) + np.nan
+	fm = np.array((np.zeros((nFeat*nMembers,nTrios)) + np.nan),dtype='|S15') # making it an str allows us to control format as we go and use non numerical data types if needed later.
 	# loop through all data
 	for i in range(n):
 		# get sample 
 		trioID,membID = _parseSampID(data[i,6])
-		print data[i,6]
 		if membID >= 0:
 			# version - 9
 			iFeat = 0
 			row = iFeat * nMembers + membID
-			print trioID
-			print trioList[trioID==trioList]
-			fm[row,trioID==trioList] = _parseVersion(data[i,9])
+			fm[row,trioID==trioList] = '%i'%(_parseVersion(data[i,9]))
 			
 
 			# ship date - 14
 			iFeat = 1
 			row = iFeat * nMembers + membID
-			print row
-			fm[row,trioID==trioList] = _paresShipDate(data[i,14])
+			fm[row,trioID==trioList] = '%i'%(_paresShipDate(data[i,14]))
 
 	# save the final matrix
 	saveFM(fm,fmPath,featHeader,trioList,studyID='101')
