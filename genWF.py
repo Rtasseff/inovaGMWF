@@ -25,6 +25,8 @@ import subprocess
 
 
 floatFmtStr = '%05.4E'
+nanValues = ['NA','NaN','na','nan']
+naValue = 'NA'
 
 
 def _checkPatientID(patientID,studyID='101',allowedSuffix=['FAM']):
@@ -255,7 +257,7 @@ def saveFM(data,fmPath,featHeader,samples):
 	fout = open (fmPath,'w')
 	n,m = data.shape
 	if n!=len(featHeader):
-		raise ValueError('ERR:0009, number of features (rows) and headers not equal')
+		raise ValueError('ERR:00009, number of features (rows) and headers not equal')
 	if m!=len(samples):
 		raise ValueError('ERR:00010, number of patients and col not equal')
 	fout.write('.\t')
@@ -275,7 +277,8 @@ def _catOrderedFM(filenames,outfile,skipHeader=True):
 			for line in infile:
 				outfile.write(line)
 
-
+			
+		
 
 
 def filterFM(fmInPath,fmOutPath,maxMiss=.9,minObs=5):
@@ -392,14 +395,71 @@ def catFM(fMNames,sampleIDs,foutPath,studyID='101',allowedSuffix=['FAM']):
 	fout.close()
 					
 			
+def _getFeatureNamesByGroup(fmPath,lookfor,feildInd):
+	"""Going thourgh feature names in fmPath,
+	record names that conatin strings in the list 
+	lookfor in the corrisponding feild index, feildInd.
+	"""
+	n = len(lookfor)
+	if n!=len(feildInd):
+		raise ValueError('ERR:00013, lookfor string list must be equal to feildInd')
+	# perp list of lists
+	nameLists = []
+	for i in range(n):
+		nameLists.append([])
+	fin = open(fmPath)
+	# skip header 
+	line = fin.next()
+	for line in fin:
+	# go through each sample name:
+		fname = line.strip().split('\t')[0].split(':')
+		for i in range(n):
+		# go through all lookfor strings
+			if fname[feildInd[i]].find(lookfor[i])>=0:
+				nameLists[i].append(':'.join(fname))
+	return nameLists
+
+def _mkPairFile(nameList1,nameList2,foutPath):
+	"""Create a file at foutPath that contains
+	all pairs from nameList1 and 2. This file 
+	can be used to guide the pairwise analysis.
+	"""
+	with open(foutPath,'w') as fout:
+		for name1 in nameList1:
+			for name2 in nameList2:
+				fout.write(name1+'\t'+name2+'\n')
+
+def mkPSPairFile(fmPath,foutPath,pairType='batch'):
+	"""Make a preset (PS) pair file for use in pairwise 
+	analysis on the feature matrix at fmPath.
+	Save it to foutPath.
+	Current presets pairType values:
+	batch	compare batch features to critical phenotypes
+	"""
+	if pairType=='batch':
+		feildInd = [3,3]
+		lookfor = ['BATCH','Critical_Phenotype']
+		nameLists =  _getFeatureNamesByGroup(fmPath,lookfor,feildInd)
+		_mkPairFile(nameLists[0],nameLists[1],foutPath)
+	else:
+		raise ValueError('ERR:00014, pairType value is not in preset list.')
+
+
+
 
 			
 
-def runPairwise(fMPath,outDir,outName,pwWhich='/titan/cancerregulome8/TCGA/scripts/pairwise-2.0.0-current'):
+def runPairwise(fMPath,outDir,outName,pwWhich='/titan/cancerregulome8/TCGA/scripts/pairwise-2.0.0-current',pairFile=''):
 	"""Run the pairwise code found at pwWhich on feature matrix at
 	fMName and save the output to outName.
 	"""
-	call = pwWhich+' '+fMPath+' '+outDir+'/'+outName
+	# construct the call to the pairwise script
+	call = pwWhich
+	# check to see if we have a file to indicate the pairs to calculate
+	if pairFile!='':
+		call = call+' --by-name '+pairFile
+
+	call = call +' '+fMPath+' '+outDir+'/'+outName
 	# redirecting output to an info file
 	with open(outDir+"/pwTmp.out",'w') as stdout:
 		subprocess.check_call(call,shell=True,stdout=stdout)
@@ -422,7 +482,9 @@ def main():
 	catFM([gnmcBatchFM,clinFM],samples,outFM,studyID='101')
 	filteredFM = wrkDir+'/test_tmp.fm'
 	filterFM(outFM,filteredFM)
-	runPairwise(filteredFM,wrkDir,'pairwiseTestOut.dat')
+	pairFile = wrkDir+'/pairFileTest.dat'
+	mkPSPairFile(filteredFM,pairFile,pairType='batch')
+	runPairwise(filteredFM,wrkDir,'pairwiseTestOut.dat',pairFile=pairFile)
 
 if __name__ == '__main__':
 	main()
