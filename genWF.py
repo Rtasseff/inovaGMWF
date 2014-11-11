@@ -275,6 +275,74 @@ def _catOrderedFM(filenames,outfile,skipHeader=True):
 			for line in infile:
 				outfile.write(line)
 
+
+
+
+def filterFM(fmInPath,fmOutPath,maxMiss=.9,minObs=5):
+	"""Filter a given feature matrix for statistically 
+	poor feauters for use in pairwise code.
+	fmInPath	str, path to the input feature matrix
+	fmOutPath 	str, path for the output feature matrix
+	maxMiss		flaot, maximum fraction of missing calls allowed
+	minObs	int, min number of observations per catigorey
+	"""
+	fin = open(fmInPath)
+	fout = open(fmOutPath,'w')
+	
+	fout.write('.')
+	line = fin.next().strip().split('\t')[1:]
+	n = len(line)
+	for sampID in line:
+		fout.write('\t'+sampID)
+	fout.write('\n')
+
+
+		
+	for line in fin:
+		tmp = line.strip().split('\t')
+		fname = tmp[0].split(':')
+		
+		# skip if this does not meet stats preprocessing requierments
+		skip = False	
+		if len(tmp[1:])!=n: 
+			skip = True
+			print 'removing '+':'.join(fname)+', in correct number of columns.'
+		if np.sum(np.array(tmp[1:],dtype=str)=='NA')>n*maxMiss:
+			skip = True
+			print 'removing '+':'.join(fname)+', too many missing values.'
+		if fname[0]=='C':
+			# check for size
+			unique = list(set(tmp[1:]))
+			if len(unique)>30:
+				skip = True
+				print 'removing '+':'.join(fname)+',too many catigories.'
+		if fname[0]=='B':
+			# check for size
+			unique = list(set(tmp[1:]))
+			if ('NA' in unique and len(unique)>3) or ('NA' not in unique and len(unique)>2):
+				skip = True
+				print 'removing '+':'.join(fname)+',too many catigories for binary.'
+
+		if fname[0]=='B' or fname[0]=='C':
+			unique = list(set(tmp[1:]))
+			values = np.array(tmp[1:],dtype=str)
+			for label in unique:
+				if np.sum(label==values)<minObs:
+					skip = True
+					print 'removing '+':'.join(fname)+', not enough samples for a group.'
+					break
+
+		if not skip:
+			fout.write(':'.join(fname)+'\t'+'\t'.join(tmp[1:])+'\n')
+	fout.close()
+	fin.close()
+
+	
+
+
+
+
+
 def catFM(fMNames,sampleIDs,foutPath,studyID='101',allowedSuffix=['FAM']):
 	"""Concatinate multiple feature matrices together.
 	Assumes first line is header for sample lables,
@@ -342,7 +410,7 @@ def runPairwise(fMPath,outDir,outName,pwWhich='/titan/cancerregulome8/TCGA/scrip
 
 
 def main():
-	clinFM = '/titan/ITMI1/projects/gamcop/data/featureMatrices/data_CLIN_20141111.fm'
+	clinFM = '/titan/ITMI1/projects/gamcop/data/featureMatrices/data_CLIN_20141106.fm'
 	gnmcBatchFM = '/titan/ITMI1/projects/gamcop/data/featureMatrices/metadata_GNMC_20141111.fm'
 	wrkDir = '/users/rtasseff/inova/inovaMWF'
 	nbListPath = wrkDir+'/repNBList.tsv'
@@ -352,7 +420,9 @@ def main():
 	samples = getPatientOrder(clinFM)
 	parseMkGenomeBatchFM(manPath,gnmcBatchFM,samples,nbList)
 	catFM([gnmcBatchFM,clinFM],samples,outFM,studyID='101')
-	runPairwise(outFM,wrkDir,'pairwiseTestOut.dat')
+	filteredFM = wrkDir+'/test_tmp.fm'
+	filterFM(outFM,filteredFM)
+	runPairwise(filteredFM,wrkDir,'pairwiseTestOut.dat')
 
 if __name__ == '__main__':
 	main()
