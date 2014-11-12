@@ -22,7 +22,7 @@ are mapped to FAM when appropriate.
 
 import numpy as np
 import subprocess
-
+import time
 
 floatFmtStr = '%05.4E'
 nanValues = ['NA','NaN','na','nan']
@@ -215,7 +215,7 @@ def parseMkGenomeBatchFM(manPath,fmPath,samples,nbList,studyID='101',genFeatName
 		raise ValueError('ERR:0007, Shipped Date not found')
 
 	# hard code the positon and name of the features...
-	featHeader = np.array(['N:NB:'+genFeatName+':version','N:M:'+genFeatName+':version','N:F:'+genFeatName+':version','N:NB:'+genFeatName+':shipDate','N:M:'+genFeatName+':shipDate','N:F:'+genFeatName+':shipDate'],dtype=str)
+	featHeader = np.array(['C:NB:'+genFeatName+':version','C:M:'+genFeatName+':version','C:F:'+genFeatName+':version','N:NB:'+genFeatName+':shipDate','N:M:'+genFeatName+':shipDate','N:F:'+genFeatName+':shipDate'],dtype=str)
 	# hard code the possible number of mebers, corrisponding the the feautres above
 	nMembers = 3
 
@@ -434,13 +434,26 @@ def mkPSPairFile(fmPath,foutPath,pairType='batch'):
 	analysis on the feature matrix at fmPath.
 	Save it to foutPath.
 	Current presets pairType values:
-	batch	compare batch features to critical phenotypes
+	batch	compare batch features to critical phenotypes to detect bias sampling
+	QC 	compare QC features to critical phenotypes to detect bias in counfounding factors
+	QCBatch	compare batch features to QC features to detect process changes
 	"""
 	if pairType=='batch':
 		feildInd = [3,3]
 		lookfor = ['BATCH','Critical_Phenotype']
 		nameLists =  _getFeatureNamesByGroup(fmPath,lookfor,feildInd)
 		_mkPairFile(nameLists[0],nameLists[1],foutPath)
+	elif pairType=='QC':
+		feildInd = [3,3]
+		lookfor = ['QC','Critical_Phenotype']
+		nameLists =  _getFeatureNamesByGroup(fmPath,lookfor,feildInd)
+		_mkPairFile(nameLists[0],nameLists[1],foutPath)
+	elif pairType=='QCBatch':
+		feildInd = [3,3]
+		lookfor = ['QC','BATCH']
+		nameLists =  _getFeatureNamesByGroup(fmPath,lookfor,feildInd)
+		_mkPairFile(nameLists[0],nameLists[1],foutPath)
+
 	else:
 		raise ValueError('ERR:00014, pairType value is not in preset list.')
 
@@ -465,13 +478,56 @@ def runPairwise(fMPath,outDir,outName,pwWhich='/titan/cancerregulome8/TCGA/scrip
 		subprocess.check_call(call,shell=True,stdout=stdout)
 
 
+def writePWSumLong(pwPath, repPath, minLogP=2.0):
+	"""Takes the pairwise output at pwPath 
+	and parses it into a suammry report at repPath
+	by filtering out paris with a log_10(p)<minLogP
+	and by dividing the ouput up by data source.
 
+	Assumes pairwise output format from pairwise-2.0.0
+	& column 0 represent covariates of intrest (enforeced in workflow by suppling pairFile, see runPairWise)
+	& column 1 represents target of intrest (enforeced in workflow by suppling pairFile, see runPairWise)
+	& orginizing by data source which is index 2 (start at 0) feild of the feautre name for the covariates.
+	& assumes pairwise output can fit in np array
+	"""
+	pw = np.loadtxt(pwPath,dtype=str,delimiter='\t')
+	# get data sources
+	n,m = pw.shape
+	dataSources = np.array(np.zeros(n),dtype='|S15')
+	for i in range(n):
+		dataSources[i] = pw[i,0].split(':')[2]
+	# get all data sources
+	uniqueSources = list(set(dataSources))
+	# prepare to write report 
+	with open(repPath,'w') as rep:
+		rep.write('Suammary output file for pairwise analysis run: '+ time.strftime("%c")+'.\n')
+		rep.write('Informative log should be in same directory.\n')
+		rep.write('Showing results for pairs with log_10(p)>'+str(minLogP)+'.\n')
+		# write each section 1 by 1
+		for source in uniqueSources:
+			rep.write('\nResults for data source: '+source+'-\n')
+			rep.write('\tFName_1\tFName_2\tRho\tlog_10(p)\n')
+			pwTmp = pw[dataSources==source]
+			p = np.array(pwTmp[:,5],dtype=float)
+			if np.any(p>minLogP):
+				# filter if too low
+				pwTmp = pwTmp[p>minLogP]
+				p = p[p>minLogP]
+				# sort
+				ind = np.argsort(p)
+				pwTmp = pwTmp[ind[-1::-1]]
+				for line in pwTmp:
+					rep.write('\t'+line[0]+'\t'+line[1]+'\t'+line[3]+'\t'+line[5]+'\n')
+			else:
+				rep.write('\t------None > min log(p)--------\n')
 
 
 
 def main():
 	clinFM = '/titan/ITMI1/projects/gamcop/data/featureMatrices/data_CLIN_20141106.fm'
 	gnmcBatchFM = '/titan/ITMI1/projects/gamcop/data/featureMatrices/metadata_GNMC_20141111.fm'
+	rnaBatchFM = '/titan/ITMI1/projects/gamcop/data/featureMatrices/metadata_RNASeq_20141106.fm'
+	miBatchFM = '/titan/ITMI1/projects/gamcop/data/featureMatrices/metadata_MIRSeq_20141111.fm'
 	wrkDir = '/users/rtasseff/inova/inovaMWF'
 	nbListPath = wrkDir+'/repNBList.tsv'
 	outFM = wrkDir+'/test.fm'
@@ -479,12 +535,31 @@ def main():
 	nbList = getRepNBList(nbListPath)
 	samples = getPatientOrder(clinFM)
 	parseMkGenomeBatchFM(manPath,gnmcBatchFM,samples,nbList)
-	catFM([gnmcBatchFM,clinFM],samples,outFM,studyID='101')
+	catFM([miBatchFM,gnmcBatchFM,rnaBatchFM,clinFM],samples,outFM,studyID='101')
 	filteredFM = wrkDir+'/test_tmp.fm'
 	filterFM(outFM,filteredFM)
-	pairFile = wrkDir+'/pairFileTest.dat'
+
+	# batch vs CP
+	pairFile = wrkDir+'/pairFileTestBatch.dat'
 	mkPSPairFile(filteredFM,pairFile,pairType='batch')
-	runPairwise(filteredFM,wrkDir,'pairwiseTestOut.dat',pairFile=pairFile)
+	pwOutName = 'pair_test_batch'
+	runPairwise(filteredFM,wrkDir,pwOutName+'_out.dat',pairFile=pairFile)
+	writePWSumLong(wrkDir+'/'+pwOutName+'_out.dat',wrkDir+'/'+pwOutName+'_summary.dat')
+
+	# QC vs CP
+	pairFile = wrkDir+'/pairFileTestQC.dat'
+	mkPSPairFile(filteredFM,pairFile,pairType='QC')
+	pwOutName = 'pair_test_qc'
+	runPairwise(filteredFM,wrkDir,pwOutName+'_out.dat',pairFile=pairFile)
+	writePWSumLong(wrkDir+'/'+pwOutName+'_out.dat',wrkDir+'/'+pwOutName+'_summary.dat')
+	
+	# QC vs Batch
+	pairFile = wrkDir+'/pairFileTestQCBatch.dat'
+	mkPSPairFile(filteredFM,pairFile,pairType='QCBatch')
+	pwOutName = 'pair_test_qcbatch'
+	runPairwise(filteredFM,wrkDir,pwOutName+'_out.dat',pairFile=pairFile)
+	writePWSumLong(wrkDir+'/'+pwOutName+'_out.dat',wrkDir+'/'+pwOutName+'_summary.dat')
+
 
 if __name__ == '__main__':
 	main()
