@@ -1,7 +1,7 @@
 """ Methods for a standard feature matrix based workflow on INOVA
 Methods to create FMs out of source files
-(IP) Methods to merge FMs
-(IP) Methods to run pairwise analysis
+- Methods to merge FMs, check consistancy and filter for stats purposes
+- Methods to run pairwise analysis and sumarize resutls (currently for medium to small runs only)
 
 Desinged around study 101,
 Some limitations on this realte to primary pheontype being defined by NB 
@@ -14,21 +14,22 @@ and near exact reprelicated data (similarity in genomes).
 Basically to allow for the indepedence assumption of most analysis. 
 We note that this limitation is introduced for systimatic analysis 
 of feature matrix like input data.
-
-Thus:
-Allowable mebers = [NB, NB-A, M, F] where all with same family ID 
-are mapped to FAM when appropriate.  
+Thus, allowable mebers = [NB, NB-A, NB-B, M, F] where all with same family ID 
+are mapped to FAM when appropriate based on a predefined list of representitive newborns.  
 """
 
 import numpy as np
 import subprocess
 import time
 import statsUtil as su
+import logging
+import sys
 
 floatFmtStr = '%05.4E'
 nanValues = ['NA','NaN','na','nan']
-naValue = 'NA'
 
+disc="Python workflow for standard genomic/molecular data analysis, INOVA 101."
+version='0.1.0'
 
 def _checkPatientID(patientID,studyID='101',allowedSuffix=['FAM']):
 	"""Check that ID is consistent with expectations"""
@@ -310,22 +311,22 @@ def filterFM(fmInPath,fmOutPath,maxMiss=.9,minObs=5):
 		skip = False	
 		if len(tmp[1:])!=n: 
 			skip = True
-			print 'removing '+':'.join(fname)+', in correct number of columns.'
+			logging.info('removing '+':'.join(fname)+', in correct number of columns.')
 		if np.sum(np.array(tmp[1:],dtype=str)=='NA')>n*maxMiss:
 			skip = True
-			print 'removing '+':'.join(fname)+', too many missing values.'
+			logging.info('removing '+':'.join(fname)+', too many missing values.')
 		if fname[0]=='C':
 			# check for size
 			unique = list(set(tmp[1:]))
 			if len(unique)>30:
 				skip = True
-				print 'removing '+':'.join(fname)+',too many catigories.'
+				logging.info('removing '+':'.join(fname)+',too many catigories.')
 		if fname[0]=='B':
 			# check for size
 			unique = list(set(tmp[1:]))
 			if ('NA' in unique and len(unique)>3) or ('NA' not in unique and len(unique)>2):
 				skip = True
-				print 'removing '+':'.join(fname)+',too many catigories for binary.'
+				logging.info('removing '+':'.join(fname)+',too many catigories for binary.')
 
 		if fname[0]=='B' or fname[0]=='C':
 			unique = list(set(tmp[1:]))
@@ -333,7 +334,7 @@ def filterFM(fmInPath,fmOutPath,maxMiss=.9,minObs=5):
 			for label in unique:
 				if np.sum(label==values)<minObs:
 					skip = True
-					print 'removing '+':'.join(fname)+', not enough samples for a group.'
+					logging.info('removing '+':'.join(fname)+', not enough samples for a group.')
 					break
 
 		if not skip:
@@ -376,9 +377,9 @@ def catFM(fMNames,sampleIDs,foutPath,studyID='101',allowedSuffix=['FAM']):
 
 			for sampleID in sampleIDs:
 				if not np.any(sampleID==labels):
-					print 'WARN0002: sample ID '+sampleID+' not found in feature matrix at '+ finName
+					logging.info('WARN0002: sample ID '+sampleID+' not found in feature matrix at '+ finName)
 				if np.sum(sampleID==labels)>1:
-					print 'WARN0003: sample ID '+sampleID+' had multiple entries in feature matrix at '+ finName+'. Using only the first.'
+					logging.info('WARN0003: sample ID '+sampleID+' had multiple entries in feature matrix at '+ finName+'. Using only the first.')
 
 			# start appending data
 			for line in fin:
@@ -463,7 +464,7 @@ def mkPSPairFile(fmPath,foutPath,pairType='batch'):
 
 			
 
-def runPairwise(fMPath,outDir,outName,pwWhich='/titan/cancerregulome8/TCGA/scripts/pairwise-2.0.0-current',pairFile=''):
+def runPairwise(fMPath,outDir,outPath,pwWhich='/titan/cancerregulome8/TCGA/scripts/pairwise-2.0.0-current',pairFile=''):
 	"""Run the pairwise code found at pwWhich on feature matrix at
 	fMName and save the output to outName.
 	"""
@@ -473,9 +474,9 @@ def runPairwise(fMPath,outDir,outName,pwWhich='/titan/cancerregulome8/TCGA/scrip
 	if pairFile!='':
 		call = call+' --by-name '+pairFile
 
-	call = call +' '+fMPath+' '+outDir+'/'+outName
+	call = call +' '+fMPath+' '+outPath
 	# redirecting output to an info file
-	with open(outDir+"/pwTmp.out",'w') as stdout:
+	with open(outDir+"/stdout.out",'w') as stdout:
 		subprocess.check_call(call,shell=True,stdout=stdout)
 
 def _replaceNANs(x):
@@ -540,42 +541,128 @@ def writePWSumLong(pwPath, repPath, minLogQ=2.0):
 
 
 def main():
+
 	clinFM = '/titan/ITMI1/projects/gamcop/data/featureMatrices/data_CLIN_20141106.fm'
 	gnmcBatchFM = '/titan/ITMI1/projects/gamcop/data/featureMatrices/metadata_GNMC_20141111.fm'
 	rnaBatchFM = '/titan/ITMI1/projects/gamcop/data/featureMatrices/metadata_RNASeq_20141106.fm'
 	miBatchFM = '/titan/ITMI1/projects/gamcop/data/featureMatrices/metadata_MIRSeq_20141111.fm'
 	wrkDir = '/users/rtasseff/inova/inovaMWF'
+	logName = 'log.out'
 	nbListPath = wrkDir+'/repNBList.tsv'
 	outFM = wrkDir+'/test.fm'
 	manPath = wrkDir+'/P286_Data_Delivery_TOTAL_021214.txt'
+	pwWhich='/titan/cancerregulome8/TCGA/scripts/pairwise-2.0.0-current'
+
+	# --setup logger and decrease level:
+	logging.getLogger('').handlers = []
+	logging.basicConfig(filename=wrkDir+'/'+logName, level=logging.INFO, format='%(asctime)s %(message)s')
+
+	# --record some basic information:
+	logging.info("--------------------------------------------------------------")
+	logging.info("Running {}, {}, version={}...".format(sys.argv[0],disc,version))
+	logging.info("--------------------------------------------------------------")
+
+	# --general setup
+	logging.info("--Getting some general information.")
+	# need the list of newborns for mapping to correct family
+	logging.info("List of representative newborns at {}.".format(nbListPath))
 	nbList = getRepNBList(nbListPath)
+
+	# need the sample list 
+	logging.info("Standardizing to sample list in FM at {}.".format(clinFM))
 	samples = getPatientOrder(clinFM)
+
+	# --parse the manifest file for gnmc batch info
+	logging.info("--Getting GNMC BATCH FM.")
+
+	logging.info("Using CG manifest at {}.".format(manPath))
 	parseMkGenomeBatchFM(manPath,gnmcBatchFM,samples,nbList)
-	catFM([miBatchFM,gnmcBatchFM,rnaBatchFM,clinFM],samples,outFM,studyID='101')
+	logging.info("GNMC BATCH FM saved at {}.".format(gnmcBatchFM))
+
+	# --Run metadata association tests
+	logging.info("--Running standard association tests on metadata.")
+
+	# feature matrices to use:
+	metaFMs = [miBatchFM,gnmcBatchFM,rnaBatchFM,clinFM]
+	logging.info("Considering metadata data stored at:")
+	for fm in metaFMs:
+		logging.info("\t{}.".format(fm))
+
+	# cat matrices together
+	catFM(metaFMs,samples,outFM,studyID='101')
+	logging.info("Metadata stored in single FM at {}.".format(outFM))
+
+	# filter for pairwise
+	logging.info("Filtering metadata for basic statistical tests.")
 	filteredFM = wrkDir+'/test_tmp.fm'
 	filterFM(outFM,filteredFM)
+	logging.info("Filtered metadata at {}.".format(filteredFM))
 
-	# batch vs CP
+
+
+	# -batch vs CP
+	logging.info("-Batch vs. Critical Phenotypes, id bias in sampling.")
+
+	# get the list of tests
 	pairFile = wrkDir+'/pairFileTestBatch.dat'
 	mkPSPairFile(filteredFM,pairFile,pairType='batch')
-	pwOutName = 'pair_test_batch'
-	runPairwise(filteredFM,wrkDir,pwOutName+'_out.dat',pairFile=pairFile)
-	writePWSumLong(wrkDir+'/'+pwOutName+'_out.dat',wrkDir+'/'+pwOutName+'_summary.dat')
+	logging.info("Pairwise tests to run indicated in {}.".format(pairFile))
 
-	# QC vs CP
+	# run pairwise
+	pwOutName = 'pair_test_batch'
+	logging.info("Running pairwise code, {}.".format(pwWhich))
+	pwOutPath = wrkDir+'/'+pwOutName+'_out.dat'
+	runPairwise(filteredFM,wrkDir,pwOutPath,pwWhich=pwWhich,pairFile=pairFile)
+	logging.info("Full pairwise output saved at {}.".format(pwOutPath))
+	pwSumPath = wrkDir+'/'+pwOutName+'_summary.dat'
+	writePWSumLong(pwOutPath,pwSumPath)
+	logging.info("Summary of pairwise output saved at {}.".format(pwSumPath))
+
+
+
+	# -QC vs CP
+	logging.info("-QC vs. Critical Phenotypes, id bias in unknown latent variables.")
+
+	# get the list of tests
 	pairFile = wrkDir+'/pairFileTestQC.dat'
 	mkPSPairFile(filteredFM,pairFile,pairType='QC')
+	logging.info("Pairwise tests to run indicated in {}.".format(pairFile))
+
+	# run pairwise
 	pwOutName = 'pair_test_qc'
-	runPairwise(filteredFM,wrkDir,pwOutName+'_out.dat',pairFile=pairFile)
-	writePWSumLong(wrkDir+'/'+pwOutName+'_out.dat',wrkDir+'/'+pwOutName+'_summary.dat')
-	
-	# QC vs Batch
+	logging.info("Running pairwise code, {}.".format(pwWhich))
+	pwOutPath = wrkDir+'/'+pwOutName+'_out.dat'
+	runPairwise(filteredFM,wrkDir,pwOutPath,pwWhich=pwWhich,pairFile=pairFile)
+	logging.info("Full pairwise output saved at {}.".format(pwOutPath))
+	pwSumPath = wrkDir+'/'+pwOutName+'_summary.dat'
+	writePWSumLong(pwOutPath,pwSumPath)
+	logging.info("Summary of pairwise output saved at {}.".format(pwSumPath))
+
+
+	# -QC vs Batch
+	logging.info("-QC vs. Critical Phenotypes, id unexpected changes in process.")
+
+	# get the list of tests
 	pairFile = wrkDir+'/pairFileTestQCBatch.dat'
 	mkPSPairFile(filteredFM,pairFile,pairType='QCBatch')
-	pwOutName = 'pair_test_qcbatch'
-	runPairwise(filteredFM,wrkDir,pwOutName+'_out.dat',pairFile=pairFile)
-	writePWSumLong(wrkDir+'/'+pwOutName+'_out.dat',wrkDir+'/'+pwOutName+'_summary.dat')
+	logging.info("Pairwise tests to run indicated in {}.".format(pairFile))
 
+	# run pairwise
+	pwOutName = 'pair_test_qcbatch'
+	logging.info("Running pairwise code, {}.".format(pwWhich))
+	pwOutPath = wrkDir+'/'+pwOutName+'_out.dat'
+	runPairwise(filteredFM,wrkDir,pwOutPath,pwWhich=pwWhich,pairFile=pairFile)
+	logging.info("Full pairwise output saved at {}.".format(pwOutPath))
+	pwSumPath = wrkDir+'/'+pwOutName+'_summary.dat'
+	writePWSumLong(pwOutPath,pwSumPath)
+	logging.info("Summary of pairwise output saved at {}.".format(pwSumPath))
+
+
+
+
+
+	logging.info("run completed.")
+	logging.info("")
 
 if __name__ == '__main__':
 	main()
