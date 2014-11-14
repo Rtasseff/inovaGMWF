@@ -23,6 +23,7 @@ are mapped to FAM when appropriate.
 import numpy as np
 import subprocess
 import time
+import statsUtil as su
 
 floatFmtStr = '%05.4E'
 nanValues = ['NA','NaN','na','nan']
@@ -477,11 +478,20 @@ def runPairwise(fMPath,outDir,outName,pwWhich='/titan/cancerregulome8/TCGA/scrip
 	with open(outDir+"/pwTmp.out",'w') as stdout:
 		subprocess.check_call(call,shell=True,stdout=stdout)
 
+def _replaceNANs(x):
+	"""Given the string array, replace
+	any usable na value with 'nan' and return.
+	"""
+	for i in range(len(x)):
+		if x[i] in nanValues:
+			x[i] = 'nan'
+	return (x)
 
-def writePWSumLong(pwPath, repPath, minLogP=2.0):
+
+def writePWSumLong(pwPath, repPath, minLogQ=2.0):
 	"""Takes the pairwise output at pwPath 
 	and parses it into a suammry report at repPath
-	by filtering out paris with a log_10(p)<minLogP
+	by filtering out paris with a log_10(FDR Q)<minLogQ
 	and by dividing the ouput up by data source.
 
 	Assumes pairwise output format from pairwise-2.0.0
@@ -502,22 +512,28 @@ def writePWSumLong(pwPath, repPath, minLogP=2.0):
 	with open(repPath,'w') as rep:
 		rep.write('Suammary output file for pairwise analysis run: '+ time.strftime("%c")+'.\n')
 		rep.write('Informative log should be in same directory.\n')
-		rep.write('Showing results for pairs with log_10(p)>'+str(minLogP)+'.\n')
+		rep.write('Showing results for pairs with log_10(FDR Q)>'+str(minLogQ)+'.\n')
 		# write each section 1 by 1
 		for source in uniqueSources:
-			rep.write('\nResults for data source: '+source+'-\n')
-			rep.write('\tFName_1\tFName_2\tRho\tlog_10(p)\n')
+			rep.write('\nResults for data source: **'+source+'**-\n')
+			rep.write('\tFName_1\tFName_2\tRho\tlog_10(p)\tlog_10(FDR Q)\n')
 			pwTmp = pw[dataSources==source]
-			p = np.array(pwTmp[:,5],dtype=float)
-			if np.any(p>minLogP):
+			p = np.array(pwTmp[:,5],dtype=str)
+			p = _replaceNANs(p)
+			p = 10.0**(-1*np.array(pwTmp[:,5],dtype=float))
+			_,q,_ = su.fdr_bh(p)
+			q = -1*np.log10(q)
+			if np.any(q>minLogQ):
 				# filter if too low
-				pwTmp = pwTmp[p>minLogP]
-				p = p[p>minLogP]
+				pwTmp = pwTmp[q>minLogQ]
+				q = q[q>minLogQ]
 				# sort
-				ind = np.argsort(p)
+				ind = np.argsort(q)
 				pwTmp = pwTmp[ind[-1::-1]]
-				for line in pwTmp:
-					rep.write('\t'+line[0]+'\t'+line[1]+'\t'+line[3]+'\t'+line[5]+'\n')
+				q = q[ind[-1::-1]]
+				for i in range(len(pwTmp)):
+					line = pwTmp[i]
+					rep.write('\t'+line[0]+'\t'+line[1]+'\t'+line[3]+'\t'+line[5]+'\t'+str(q[i])+'\n')
 			else:
 				rep.write('\t------None > min log(p)--------\n')
 
