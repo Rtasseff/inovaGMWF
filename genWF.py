@@ -1,21 +1,21 @@
 """ Methods for a standard feature matrix based workflow on INOVA
 Methods to create FMs out of source files
-- Methods to merge FMs, check consistancy and filter for stats purposes
-- Methods to run pairwise analysis and sumarize resutls (currently for medium to small runs only)
+- Methods to merge FMs, check consistency and filter for stats purposes
+- Methods to run pairwise analysis and summarize results (currently for medium to small runs only)
 
-Desinged around study 101,
-Some limitations on this realte to primary pheontype being defined by NB 
-as in NB was PTB. For some sources data on all family members is avalibel
-but in others this is not true (PTB on NB only, molecualr data on M only)
+Designed around study 101,
+Some limitations on this relate to primary phenotype being defined by NB 
+as in NB was PTB. For some sources data on all family members is available  
+but in others this is not true (PTB on NB only, molecular data on M only)
 so we have organized this around the family unit (suffix -FAM).  
-In cases with twins, only one is chosen as representtive.  
-This avoids exact duplicated data (M molecualr data)
-and near exact reprelicated data (similarity in genomes).  
-Basically to allow for the indepedence assumption of most analysis. 
-We note that this limitation is introduced for systimatic analysis 
+In cases with twins, only one is chosen as representative.  
+This avoids exact duplicated data (M molecular data)
+and near exact replicated data (similarity in genomes).  
+Basically to allow for the independence assumption of most analysis. 
+We note that this limitation is introduced for systematic analysis 
 of feature matrix like input data.
-Thus, allowable mebers = [NB, NB-A, NB-B, M, F] where all with same family ID 
-are mapped to FAM when appropriate based on a predefined list of representitive newborns.  
+Thus, allowable members = [NB, NB-A, NB-B, M, F] where all with same family ID 
+are mapped to FAM when appropriate based on a predefined list of representative newborns.  
 """
 
 import numpy as np
@@ -41,10 +41,10 @@ def _checkPatientID(patientID,studyID='101',allowedSuffix=['FAM']):
 
 
 def getPatientOrder(fmPath,studyID='101',allowedSuffix=['FAM']):
-	"""Get the smaple order from a properly fromated, pre-existing
+	"""Get the sample order from a properly formated, pre-existing
 	feature matrix.
 
-	fmPath	str, path to standard featuremetrix
+	fmPath	str, path to standard feature matrix
 	"""
 	fin = open( fmPath )
 	line = fin.next() # first line is header with info
@@ -56,8 +56,8 @@ def getPatientOrder(fmPath,studyID='101',allowedSuffix=['FAM']):
 def getRepNBList(nbListPath,):
 	"""Create a list (np str array) that contains
 	all usable newborns for family centric analysis.
-	Used in maping individuals to -FAM
-	for family centric analsyis.
+	Used in mapping individuals to -FAM
+	for family centric analysis.
 	Tab sep input list should have all and only
 	newborns used to represent a family
 	unit. An error will be returned if
@@ -65,7 +65,7 @@ def getRepNBList(nbListPath,):
 	included twice.
 
 	The list will be used for simplicity;
-	effectivly -F -M and -NB are 
+	effectively -F -M and -NB are 
 	just replaced with -FAM. However,
 	for multi births only the one
 	in the list will be used in the 
@@ -87,13 +87,13 @@ def getRepNBList(nbListPath,):
 
 def _itmiID2isbID(itmiID):
 	"""ITMI puts member ids as prefixes, but ISB puts
-	them as sufixes.  This will echange that order.
+	them as suffixes.  This will change that order.
 	Note that nan will be returned if member id is 
 	not yet accounted for.  For example sample
 	PO-101-657-22 has PO member id that is 
 	not accounted for in any logic so far or
 	analysis done. Note that the 3 sets 
-	of number complicates maters with this ID.
+	of number complicates matters with this ID.
 	"""
 	isbID = 'na'
 	tmp = itmiID.split('-')
@@ -106,19 +106,19 @@ def _itmiID2isbID(itmiID):
 	return(isbID)
 
 def _mapInd2FAM(indID,nbList):
-	"""effectivly -F and -M are 
+	"""effectively -F and -M are 
 	just replaced with -FAM. However,
 	for multi births only the one
 	in the list will be used in the 
 	-FAM family centric analysis.
-	The nbList will be used to deterimine
+	The nbList will be used to determine
 	if the passed individual is nb and if so
-	is the representitve nb from the list.
+	is the representative nb from the list.
 	Returns the new member id and new -FAM id.
-	Non representitve nb's or unrecognized 
+	Non representative nb's or unrecognized 
 	member ids will return na.
-	indID	str, isb fomrated id for individual smaple
-	nbList	np str array of usable representitive new borns
+	indID	str, isb formated id for individual sample
+	nbList	np str array of usable representative newborns
 	"""
 	membID = 'na'
 	famID = 'na'
@@ -142,11 +142,11 @@ def _mapInd2FAM(indID,nbList):
 
 
 def _parseCGSampID(itmiID,nbList,studyID='101'):
-	"""Parse the CG file sample id (equivlant to itmi id)
+	"""Parse the CG file sample id (equivalent to itmi id)
 	into a usable isb id.  Currently coded for family centric analysis 
-	and returns the family id and seperatly the member (if id is usable, na otherwise).
+	and returns the family id and separately the member (if id is usable, na otherwise).
 	itmiID	str, itmi id from CG file
-	nbList	np str array of usable representitive new borns
+	nbList	np str array of usable representative newborns
 	studyID	str the expected study id, for checking
 	"""
 	# assumes <member>(optional,-<member part 2>)-<study id>-<trio id>
@@ -179,14 +179,14 @@ def parseMkGenomeBatchFM(manPath,fmPath,samples,nbList,studyID='101',genFeatName
 	genomic batch information, currently
 	the manifest file only.
 	Then make and save the batch feature matrix.
-	Currently creating a family centric feautre matrix,
-	relevent to study 101, so features not mapable to a 
+	Currently creating a family centric feature matrix,
+	relevant to study 101, so features not mapable to a 
 	family unit (ie -FAM) will be ignored.
 	manPath 	str, path to input manifest file
 	fmPath 	str, path to output genomic batch feature matrix
 	samples	list of sample ids as strings 
 			related to primary feature matrix
-	nbList	np str array of usable representitive new borns
+	nbList	np str array of usable representative newborns
 	studyID	str the expected study id, for checking
 
 	genFeatName 	str, the general name of the these batch features
@@ -285,7 +285,7 @@ def _catOrderedFM(filenames,outfile,skipHeader=True):
 
 def filterFM(fmInPath,fmOutPath,maxMiss=.9,minObs=5):
 	"""Filter a given feature matrix for statistically 
-	poor feauters for use in pairwise code.
+	poor features for use in pairwise code.
 	fmInPath	str, path to the input feature matrix
 	fmOutPath 	str, path for the output feature matrix
 	maxMiss		flaot, maximum fraction of missing calls allowed
@@ -349,12 +349,12 @@ def filterFM(fmInPath,fmOutPath,maxMiss=.9,minObs=5):
 
 
 def catFM(fMNames,sampleIDs,foutPath,studyID='101',allowedSuffix=['FAM']):
-	"""Concatinate multiple feature matrices together.
-	Assumes first line is header for sample lables,
+	"""Concatenate multiple feature matrices together.
+	Assumes first line is header for sample labels,
 	and use sampleID to determine columns and their order.
 	nan will be used to fill in missing samples,
 	sample in sampleID but not in a FM header.
-	fMnames	list of str paths for feature matrices to be cated
+	fMnames	list of str paths for feature matrices to be cat'ed
 	sampleIDs	list of str sample ids
 	"""
 	fout = open(foutPath,'w')
@@ -398,9 +398,9 @@ def catFM(fMNames,sampleIDs,foutPath,studyID='101',allowedSuffix=['FAM']):
 					
 			
 def _getFeatureNamesByGroup(fmPath,lookfor,feildInd):
-	"""Going thourgh feature names in fmPath,
-	record names that conatin strings in the list 
-	lookfor in the corrisponding feild index, feildInd.
+	"""Going through feature names in fmPath,
+	record names that contain strings in the list 
+	lookfor in the corresponding field index, fieldInd.
 	"""
 	n = len(lookfor)
 	if n!=len(feildInd):
@@ -437,7 +437,7 @@ def mkPSPairFile(fmPath,foutPath,pairType='batch'):
 	Save it to foutPath.
 	Current presets pairType values:
 	batch	compare batch features to critical phenotypes to detect bias sampling
-	QC 	compare QC features to critical phenotypes to detect bias in counfounding factors
+	QC 	compare QC features to critical phenotypes to detect bias in confounding factors
 	QCBatch	compare batch features to QC features to detect process changes
 	"""
 	if pairType=='batch':
@@ -491,14 +491,14 @@ def _replaceNANs(x):
 
 def writePWSumLong(pwPath, repPath, minLogQ=2.0):
 	"""Takes the pairwise output at pwPath 
-	and parses it into a suammry report at repPath
-	by filtering out paris with a log_10(FDR Q)<minLogQ
+	and parses it into a summary report at repPath
+	by filtering out pairs with a log_10(FDR Q)<minLogQ
 	and by dividing the ouput up by data source.
 
 	Assumes pairwise output format from pairwise-2.0.0
-	& column 0 represent covariates of intrest (enforeced in workflow by suppling pairFile, see runPairWise)
-	& column 1 represents target of intrest (enforeced in workflow by suppling pairFile, see runPairWise)
-	& orginizing by data source which is index 2 (start at 0) feild of the feautre name for the covariates.
+	& column 0 represent covariates of interest (enforced in workflow by suppling pairFile, see runPairWise)
+	& column 1 represents target of interest (enforced in workflow by suppling pairFile, see runPairWise)
+	& organizing by data source which is index 2 (start at 0) field of the feature name for the covariates.
 	& assumes pairwise output can fit in np array
 	"""
 	pw = np.loadtxt(pwPath,dtype=str,delimiter='\t')
