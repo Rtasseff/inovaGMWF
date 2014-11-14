@@ -311,22 +311,22 @@ def filterFM(fmInPath,fmOutPath,maxMiss=.9,minObs=5):
 		skip = False	
 		if len(tmp[1:])!=n: 
 			skip = True
-			logging.info('removing '+':'.join(fname)+', in correct number of columns.')
+			logging.warning('removing '+':'.join(fname)+', in correct number of columns.')
 		if np.sum(np.array(tmp[1:],dtype=str)=='NA')>n*maxMiss:
 			skip = True
-			logging.info('removing '+':'.join(fname)+', too many missing values.')
+			logging.warning('removing '+':'.join(fname)+', too many missing values.')
 		if fname[0]=='C':
 			# check for size
 			unique = list(set(tmp[1:]))
 			if len(unique)>30:
 				skip = True
-				logging.info('removing '+':'.join(fname)+',too many catigories.')
+				logging.warning('removing '+':'.join(fname)+',too many catigories.')
 		if fname[0]=='B':
 			# check for size
 			unique = list(set(tmp[1:]))
 			if ('NA' in unique and len(unique)>3) or ('NA' not in unique and len(unique)>2):
 				skip = True
-				logging.info('removing '+':'.join(fname)+',too many catigories for binary.')
+				logging.warning('removing '+':'.join(fname)+',too many catigories for binary.')
 
 		if fname[0]=='B' or fname[0]=='C':
 			unique = list(set(tmp[1:]))
@@ -334,7 +334,7 @@ def filterFM(fmInPath,fmOutPath,maxMiss=.9,minObs=5):
 			for label in unique:
 				if np.sum(label==values)<minObs:
 					skip = True
-					logging.info('removing '+':'.join(fname)+', not enough samples for a group.')
+					logging.warning('removing '+':'.join(fname)+', not enough samples for a group.')
 					break
 
 		if not skip:
@@ -377,9 +377,9 @@ def catFM(fMNames,sampleIDs,foutPath,studyID='101',allowedSuffix=['FAM']):
 
 			for sampleID in sampleIDs:
 				if not np.any(sampleID==labels):
-					logging.info('WARN0002: sample ID '+sampleID+' not found in feature matrix at '+ finName)
+					logging.warning('WARN0002: sample ID '+sampleID+' not found in feature matrix at '+ finName)
 				if np.sum(sampleID==labels)>1:
-					logging.info('WARN0003: sample ID '+sampleID+' had multiple entries in feature matrix at '+ finName+'. Using only the first.')
+					logging.warning('WARN0003: sample ID '+sampleID+' had multiple entries in feature matrix at '+ finName+'. Using only the first.')
 
 			# start appending data
 			for line in fin:
