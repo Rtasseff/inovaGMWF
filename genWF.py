@@ -1,7 +1,7 @@
 """ Methods for a standard feature matrix based workflow on INOVA
 Methods to create FMs out of source files
 - Methods to merge FMs, check consistency and filter for stats purposes
-- Methods to run pairwise analysis and summarize results (currently for medium to small runs only)
+- Methods to run pairwise analysis and summarize results (currently for medium to small runs only, metadata)
 
 Designed around study 101,
 Some limitations on this relate to primary phenotype being defined by NB 
@@ -21,14 +21,16 @@ are mapped to FAM when appropriate based on a predefined list of representative 
 import numpy as np
 import subprocess
 import time
-import statsUtil as su
+import util 
 import logging
 import sys
+import ConfigParser
+import argparse
 
 floatFmtStr = '%05.4E'
 nanValues = ['NA','NaN','na','nan']
 
-disc="Python workflow for standard genomic/molecular data analysis, INOVA 101."
+disc="python workflow for standard genomic/molecular data analysis, INOVA 101."
 version='0.1.0'
 
 def _checkPatientID(patientID,studyID='101',allowedSuffix=['FAM']):
@@ -522,7 +524,7 @@ def writePWSumLong(pwPath, repPath, minLogQ=2.0):
 			p = np.array(pwTmp[:,5],dtype=str)
 			p = _replaceNANs(p)
 			p = 10.0**(-1*np.array(pwTmp[:,5],dtype=float))
-			_,q,_ = su.fdr_bh(p)
+			_,q,_ = util.fdr_bh(p)
 			q = -1*np.log10(q)
 			if np.any(q>minLogQ):
 				# filter if too low
@@ -540,22 +542,34 @@ def writePWSumLong(pwPath, repPath, minLogQ=2.0):
 
 
 
+def _parse_CmdArgs(parser):
+	parser.add_argument("config",help="Path to the configuration file that contains all settable parameters/options.")
+	return(parser.parse_args())
+
 def main():
 
-	clinFM = '/titan/ITMI1/projects/gamcop/data/featureMatrices/data_CLIN_20141106.fm'
-	gnmcBatchFM = '/titan/ITMI1/projects/gamcop/data/featureMatrices/metadata_GNMC_20141111.fm'
-	rnaBatchFM = '/titan/ITMI1/projects/gamcop/data/featureMatrices/metadata_RNASeq_20141106.fm'
-	miBatchFM = '/titan/ITMI1/projects/gamcop/data/featureMatrices/metadata_MIRSeq_20141111.fm'
-	wrkDir = '/users/rtasseff/inova/inovaMWF'
 	logName = 'log.out'
-	nbListPath = wrkDir+'/repNBList.tsv'
-	outFM = wrkDir+'/test.fm'
-	manPath = wrkDir+'/P286_Data_Delivery_TOTAL_021214.txt'
-	pwWhich='/titan/cancerregulome8/TCGA/scripts/pairwise-2.0.0-current'
+	
+
+
+
+	# --get the input arguments
+	parser = argparse.ArgumentParser(description="Run the"+disc+' Version='+version+'.')
+	args = _parse_CmdArgs(parser)
+
+	
+	#--setup the config parser
+	config = ConfigParser.SafeConfigParser()
+	config.read(args.config)
+
+
+	# --set up the output dir
+	# out directory 
+	outDir = config.get('genWF','outDir')
 
 	# --setup logger and decrease level:
 	logging.getLogger('').handlers = []
-	logging.basicConfig(filename=wrkDir+'/'+logName, level=logging.INFO, format='%(asctime)s %(message)s')
+	logging.basicConfig(filename=outDir+'/'+logName, level=logging.INFO, format='%(asctime)s %(message)s')
 
 	# --record some basic information:
 	logging.info("--------------------------------------------------------------")
@@ -564,99 +578,139 @@ def main():
 
 	# --general setup
 	logging.info("--Getting some general information.")
+	
+	pwWhich = config.get('genWF','pwWhich')	
+
 	# need the list of newborns for mapping to correct family
-	logging.info("List of representative newborns at {}.".format(nbListPath))
-	nbList = getRepNBList(nbListPath)
+	repNBListPath = config.get('genWF','repNBListPath')
+	logging.info("List of representative newborns at {}.".format(repNBListPath))
+	nbList = getRepNBList(repNBListPath)
 
 	# need the sample list 
-	logging.info("Standardizing to sample list in FM at {}.".format(clinFM))
-	samples = getPatientOrder(clinFM)
+	fmSampPath = config.get('genWF','fmSampPath')
+	logging.info("Standardizing to sample list in FM at {}.".format(fmSampPath))
+	samples = getPatientOrder(fmSampPath)
 
-	# --parse the manifest file for gnmc batch info
-	logging.info("--Getting GNMC BATCH FM.")
 
-	logging.info("Using CG manifest at {}.".format(manPath))
-	parseMkGenomeBatchFM(manPath,gnmcBatchFM,samples,nbList)
-	logging.info("GNMC BATCH FM saved at {}.".format(gnmcBatchFM))
+	# --Genomic metadata
+	if config.getboolean('genWF','runGNMCMetadata'):
+		# ***latter, when we have QC stuff, change this to GMNC metadata
+		logging.info("--Getting GNMC BATCH FM.")  
 
-	# --Run metadata association tests
+		# parse the manifest file for gnmc batch info
+		manPath =  config.get('genWF','manPath')
+		logging.info("Using CG manifest at {}.".format(manPath))
+		gnmcMDFMOutPath = config.get('genWF','gnmcMDFMOutPath') 
+		parseMkGenomeBatchFM(manPath,gnmcMDFMOutPath,samples,nbList)
+		logging.info("GNMC BATCH FM saved at {}.".format(gnmcMDFMOutPath))
+
+	# --Run metadata analysis
 	logging.info("--Running standard association tests on metadata.")
 
-	# feature matrices to use:
-	metaFMs = [miBatchFM,gnmcBatchFM,rnaBatchFM,clinFM]
-	logging.info("Considering metadata data stored at:")
-	for fm in metaFMs:
-		logging.info("\t{}.".format(fm))
+	# -collect data
+	if config.getboolean('genWF','runCollectData'):
+		# feature matrices to use:
+		metaFMs = []
+		# mi rna
+		mirMDFMPath = config.get('genWF','mirMDFMPath')	
+		if mirMDFMPath not in nanValues: metaFMs.append(mirMDFMPath)
+		# rna seq
+		rnasMDFMPath = config.get('genWF','rnasMDFMPath')
+		if rnasMDFMPath not in nanValues: metaFMs.append(rnasMDFMPath)
+		# methylation 
+		methMDFMPath = config.get('genWF','methMDFMPath')
+		if methMDFMPath not in nanValues: metaFMs.append(methMDFMPath)
+		# genomic 
+		gnmcMDFMPath = config.get('genWF','gnmcMDFMPath')
+		if gnmcMDFMPath not in nanValues: metaFMs.append(gnmcMDFMPath)
 
-	# cat matrices together
-	catFM(metaFMs,samples,outFM,studyID='101')
-	logging.info("Metadata stored in single FM at {}.".format(outFM))
+		clinDataFMPath = config.get('genWF','clinDataFMPath')
+		metaFMs.append(clinDataFMPath)
+
+		logging.info("Considering metadata data stored at:")
+		for fm in metaFMs:
+			logging.info("\t{}.".format(fm))
+
+		# cat matrices together
+		combMDFMOutPath = config.get('genWF','combMDFMOutPath')
+		catFM(metaFMs,samples,combMDFMOutPath,studyID='101')
+		logging.info("Metadata stored in single FM at {}.".format(combMDFMOutPath))
 
 	# filter for pairwise
-	logging.info("Filtering metadata for basic statistical tests.")
-	filteredFM = wrkDir+'/test_tmp.fm'
-	filterFM(outFM,filteredFM)
-	logging.info("Filtered metadata at {}.".format(filteredFM))
+	if config.getboolean('genWF','runFilterFM'):
+		logging.info("Filtering metadata for basic statistical tests.")
+		filteredFMInPath = config.get('genWF','filteredFMInPath')
+		filteredFMOutPath = config.get('genWF','filteredFMOutPath')
+		filterFM(filteredFMInPath,filteredFMOutPath)
+		logging.info("Filtered metadata at {} and saved to {}.".format(filteredFMInPath,filteredFMOutPath))
 
 
 
 	# -batch vs CP
-	logging.info("-Batch vs. Critical Phenotypes, id bias in sampling.")
+	if config.getboolean('genWF','runBatchCP'):
+		logging.info("-Batch vs. Critical Phenotypes, id bias in sampling.")
+		outName = config.get('genWF','batchCPName')
 
-	# get the list of tests
-	pairFile = wrkDir+'/pairFileTestBatch.dat'
-	mkPSPairFile(filteredFM,pairFile,pairType='batch')
-	logging.info("Pairwise tests to run indicated in {}.".format(pairFile))
+		# get the list of tests
+		fmPath = config.get('genWF','batchCPFMPath')
+		pairFile = outDir+'/pairwise_'+outName+'_pairList.dat'
+		mkPSPairFile(fmPath,pairFile,pairType='batch')
+		logging.info("Pairwise tests to run indicated in {}.".format(pairFile))
 
-	# run pairwise
-	pwOutName = 'pair_test_batch'
-	logging.info("Running pairwise code, {}.".format(pwWhich))
-	pwOutPath = wrkDir+'/'+pwOutName+'_out.dat'
-	runPairwise(filteredFM,wrkDir,pwOutPath,pwWhich=pwWhich,pairFile=pairFile)
-	logging.info("Full pairwise output saved at {}.".format(pwOutPath))
-	pwSumPath = wrkDir+'/'+pwOutName+'_summary.dat'
-	writePWSumLong(pwOutPath,pwSumPath)
-	logging.info("Summary of pairwise output saved at {}.".format(pwSumPath))
+		# run pairwise
+		logging.info("Running pairwise code, {}.".format(pwWhich))
+		pwOutPath = outDir+'/pairwise_'+outName+'_fullOut.dat'
+		runPairwise(fmPath,outDir,pwOutPath,pwWhich=pwWhich,pairFile=pairFile)
+		logging.info("Full pairwise output saved at {}.".format(pwOutPath))
+		pwSumPath = outDir+'/pairwise_'+outName+'_summary.dat'
+		writePWSumLong(pwOutPath,pwSumPath)
+		logging.info("Summary of pairwise output saved at {}.".format(pwSumPath))
 
 
 
 	# -QC vs CP
-	logging.info("-QC vs. Critical Phenotypes, id bias in unknown latent variables.")
+	if config.getboolean('genWF','runQCCP'):
+		logging.info("-QC vs. Critical Phenotypes, id bias in unknown latent variables.")
+		outName = config.get('genWF','qCCPName')
 
-	# get the list of tests
-	pairFile = wrkDir+'/pairFileTestQC.dat'
-	mkPSPairFile(filteredFM,pairFile,pairType='QC')
-	logging.info("Pairwise tests to run indicated in {}.".format(pairFile))
+		# get the list of tests
+		fmPath = config.get('genWF','qCCPFMPath')
+		pairFile = outDir+'/pairwise_'+outName+'_pairList.dat'
+		mkPSPairFile(fmPath,pairFile,pairType='batch')
+		logging.info("Pairwise tests to run indicated in {}.".format(pairFile))
 
-	# run pairwise
-	pwOutName = 'pair_test_qc'
-	logging.info("Running pairwise code, {}.".format(pwWhich))
-	pwOutPath = wrkDir+'/'+pwOutName+'_out.dat'
-	runPairwise(filteredFM,wrkDir,pwOutPath,pwWhich=pwWhich,pairFile=pairFile)
-	logging.info("Full pairwise output saved at {}.".format(pwOutPath))
-	pwSumPath = wrkDir+'/'+pwOutName+'_summary.dat'
-	writePWSumLong(pwOutPath,pwSumPath)
-	logging.info("Summary of pairwise output saved at {}.".format(pwSumPath))
+		# run pairwise
+		logging.info("Running pairwise code, {}.".format(pwWhich))
+		pwOutPath = outDir+'/pairwise_'+outName+'_fullOut.dat'
+		runPairwise(fmPath,outDir,pwOutPath,pwWhich=pwWhich,pairFile=pairFile)
+		logging.info("Full pairwise output saved at {}.".format(pwOutPath))
+		pwSumPath = outDir+'/pairwise_'+outName+'_summary.dat'
+		writePWSumLong(pwOutPath,pwSumPath)
+		logging.info("Summary of pairwise output saved at {}.".format(pwSumPath))
+
+
 
 
 	# -QC vs Batch
-	logging.info("-QC vs. Critical Phenotypes, id unexpected changes in process.")
 
-	# get the list of tests
-	pairFile = wrkDir+'/pairFileTestQCBatch.dat'
-	mkPSPairFile(filteredFM,pairFile,pairType='QCBatch')
-	logging.info("Pairwise tests to run indicated in {}.".format(pairFile))
+	if config.getboolean('genWF','runQCBatch'):
+		logging.info("-QC vs. Critical Phenotypes, id unexpected changes in process.")
+		outName = config.get('genWF','qCBatchName')
 
-	# run pairwise
-	pwOutName = 'pair_test_qcbatch'
-	logging.info("Running pairwise code, {}.".format(pwWhich))
-	pwOutPath = wrkDir+'/'+pwOutName+'_out.dat'
-	runPairwise(filteredFM,wrkDir,pwOutPath,pwWhich=pwWhich,pairFile=pairFile)
-	logging.info("Full pairwise output saved at {}.".format(pwOutPath))
-	pwSumPath = wrkDir+'/'+pwOutName+'_summary.dat'
-	writePWSumLong(pwOutPath,pwSumPath)
-	logging.info("Summary of pairwise output saved at {}.".format(pwSumPath))
+		# get the list of tests
+		fmPath = config.get('genWF','qCBatchFMPath')
+		pairFile = outDir+'/pairwise_'+outName+'_pairList.dat'
+		mkPSPairFile(fmPath,pairFile,pairType='batch')
+		logging.info("Pairwise tests to run indicated in {}.".format(pairFile))
 
+		# run pairwise
+		logging.info("Running pairwise code, {}.".format(pwWhich))
+		pwOutPath = outDir+'/pairwise_'+outName+'_fullOut.dat'
+		runPairwise(fmPath,outDir,pwOutPath,pwWhich=pwWhich,pairFile=pairFile)
+		logging.info("Full pairwise output saved at {}.".format(pwOutPath))
+		pwSumPath = outDir+'/pairwise_'+outName+'_summary.dat'
+		writePWSumLong(pwOutPath,pwSumPath)
+		logging.info("Summary of pairwise output saved at {}.".format(pwSumPath))
 
 
 
