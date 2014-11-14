@@ -26,6 +26,7 @@ import logging
 import sys
 import ConfigParser
 import argparse
+import os
 
 floatFmtStr = '%05.4E'
 nanValues = ['NA','NaN','na','nan']
@@ -544,6 +545,8 @@ def writePWSumLong(pwPath, repPath, minLogQ=2.0):
 
 def _parse_CmdArgs(parser):
 	parser.add_argument("config",help="Path to the configuration file that contains all settable parameters/options.")
+	parser.add_argument("-ow","--over-write", help="Force to overwrite any file in output dir specified in config file, except log.out, which is appended.",
+		action="store_true")
 	return(parser.parse_args())
 
 def main():
@@ -566,6 +569,14 @@ def main():
 	# --set up the output dir
 	# out directory 
 	outDir = config.get('genWF','outDir')
+	if os.path.exists(outDir):
+		# only overwrite if option is set
+		if args.over-write:
+			logging.warning("Using an existing directory for output, previous files may be overwritten: {}".format(outDir))
+		else:
+			raise ValueError ("The specified output dir already exists and the -ow command was not used to force overwrite.".format(outDir))
+	else:
+		os.makedirs(outDir)
 
 	# --setup logger and decrease level:
 	logging.getLogger('').handlers = []
