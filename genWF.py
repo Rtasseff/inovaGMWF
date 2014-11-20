@@ -492,7 +492,7 @@ def _replaceNANs(x):
 	return (x)
 
 
-def writePWSumLong(pwPath, repPath, minLogQ=2.0):
+def writePWSumLong(pwPath, repPath, minLogQ=2.0,nTopPairs=2):
 	"""Takes the pairwise output at pwPath 
 	and parses it into a summary report at repPath
 	by filtering out pairs with a log_10(FDR Q)<minLogQ
@@ -503,6 +503,8 @@ def writePWSumLong(pwPath, repPath, minLogQ=2.0):
 	& column 1 represents target of interest (enforced in workflow by suppling pairFile, see runPairWise)
 	& organizing by data source which is index 2 (start at 0) field of the feature name for the covariates.
 	& assumes pairwise output can fit in np array
+
+	returns a list of top scoring pairs (nTopPairs) for each data source
 	"""
 	pw = np.loadtxt(pwPath,dtype=str,delimiter='\t')
 	# get data sources
@@ -512,6 +514,8 @@ def writePWSumLong(pwPath, repPath, minLogQ=2.0):
 		dataSources[i] = pw[i,0].split(':')[2]
 	# get all data sources
 	uniqueSources = list(set(dataSources))
+	# save top pairs
+	topPairsList = []
 	# prepare to write report 
 	with open(repPath,'w') as rep:
 		rep.write('Suammary output file for pairwise analysis run: '+ time.strftime("%c")+'.\n')
@@ -527,6 +531,7 @@ def writePWSumLong(pwPath, repPath, minLogQ=2.0):
 			p = 10.0**(-1*np.array(pwTmp[:,5],dtype=float))
 			_,q,_ = util.fdr_bh(p)
 			q = -1*np.log10(q)
+			
 			if np.any(q>minLogQ):
 				# filter if too low
 				pwTmp = pwTmp[q>minLogQ]
@@ -538,14 +543,92 @@ def writePWSumLong(pwPath, repPath, minLogQ=2.0):
 				for i in range(len(pwTmp)):
 					line = pwTmp[i]
 					rep.write('\t'+line[0]+'\t'+line[1]+'\t'+line[3]+'\t'+line[5]+'\t'+str(q[i])+'\n')
+					# record top pairs
+					if i < nTopPairs:
+						topPairsList.append([line[0],line[1]])
+
 			else:
 				rep.write('\t------None > min log(p)--------\n')
+	return(topPairsList)
+	
+def plotter(pairNameList,fmPath,outDir='.',prefix='pwPlot'):
+	""" Given a list of 2 value lists that contain the feature names
+	for each pair, pairNameList, go throuth the current feature
+	matrix, FMPath, and create and save the plots as:
+	<outDir>/<prefix>_<name 1>_vs_<name 2>.png.
+	"""
+	n = len(pairNameList)
+	fm = open(fmPath)
+	# skip header 
+	line = fm.next()
+	data = line.strip().split('\t')
+	# assuming pair list is short so we will allocate as we go
+	# create mini matrix for more efficent pair finding
+	fmMini = np.array(data,dtype=str)
+	# create indexing matrix for fast recall
+	pairInd = np.zeros((n,2),dtype=int) - 1
+	fmMiniCount = 1 # skip header row
+	for line in fm:
+		data = line.strip().split('\t')
+		fname = data[0]
+		keep = False
+		# check all pairs for same
+		for i in range(n):
+			# pairs can have same name so go through all of them
+			if fname==pairNameList[i][0]:
+				keep = True
+				pairInd[i,0] = fmMiniCount
 
+			elif fname==pairNameList[i][1]:
+				keep = True
+				pairInd[i,1] = fmMiniCount
+		# added if needed, but dont add if already added
+		if keep:
+			fmMini = np.vstack([fmMini,data])
+			fmMiniCount += 1
+			
+	fm.close()
+	# now we have the mini fm lets do the plots
+	for i in range(n):
+		x = fmMini[pairInd[i,0]]
+		y = fmMini[pairInd[i,1]]
+		outfile = outDir+'/'+prefix+'_'+x[0]+'_vs_'+y[0]+'.png'
+		try:
+			util.plotPairwise(x,y,outfile=outfile,varType=['',''],varName=['',''])
+		except ValueError as ve:
+			logging.warning("Could not create the top scoring pairwise figure {}.\n\t Value error occurred:\n\t{}".format(outfile,ve))
+			print outfile
+			print ve
+			
+	#remove mini fm
+	del fmMini
+	del pairInd
+
+
+def _runSmallPW(outDir,outName,pairType,pwWhich,fmPath):
+	pairFile = outDir+'/pairwise_'+outName+'_pairList.dat'
+	mkPSPairFile(fmPath,pairFile,pairType=pairType)
+	logging.info("Pairwise tests to run indicated in {}.".format(pairFile))
+	# run pairwise
+	logging.info("Running pairwise code, {}.".format(pwWhich))
+	pwOutPath = outDir+'/pairwise_'+outName+'_fullOut.dat'
+	runPairwise(fmPath,outDir,pwOutPath,pwWhich=pwWhich,pairFile=pairFile)
+	logging.info("Full pairwise output saved at {}.".format(pwOutPath))
+	pwSumPath = outDir+'/pairwise_'+outName+'_summary.dat'
+	topPairsList = writePWSumLong(pwOutPath,pwSumPath)
+	logging.info("Summary of pairwise output saved at {}.".format(pwSumPath))
+	# plot top pairs
+	if len(topPairsList)>0:
+		prefix = 'pwPlot_'+outName
+		plotter(topPairsList,fmPath,outDir=outDir,prefix=prefix)
+		logging.info("Plots of top scoreing pairs saved in {} with prefix {}_.".format(outDir,prefix))
+
+	
 
 
 def _parse_CmdArgs(parser):
 	parser.add_argument("config",help="Path to the configuration file that contains all settable parameters/options.")
-	parser.add_argument("-ow","--over-write", help="Force to overwrite any file in output dir specified in config file, except log.out, which is appended.",
+	parser.add_argument("-ow","--over_write", help="Force to overwrite any file in output dir specified in config file, except log.out, which is appended.",
 		action="store_true")
 	return(parser.parse_args())
 
@@ -571,7 +654,7 @@ def main():
 	outDir = config.get('genWF','outDir')
 	if os.path.exists(outDir):
 		# only overwrite if option is set
-		if args.over-write:
+		if args.over_write:
 			logging.warning("Using an existing directory for output, previous files may be overwritten: {}".format(outDir))
 		else:
 			raise ValueError ("The specified output dir already exists and the -ow command was not used to force overwrite.".format(outDir))
@@ -652,7 +735,7 @@ def main():
 		logging.info("Filtering metadata for basic statistical tests.")
 		filteredFMInPath = config.get('genWF','filteredFMInPath')
 		filteredFMOutPath = config.get('genWF','filteredFMOutPath')
-		filterFM(filteredFMInPath,filteredFMOutPath)
+		filterFM(filteredFMInPath,filteredFMOutPath,minObs=0)
 		logging.info("Filtered metadata at {} and saved to {}.".format(filteredFMInPath,filteredFMOutPath))
 
 
@@ -664,20 +747,10 @@ def main():
 
 		# get the list of tests
 		fmPath = config.get('genWF','batchCPFMPath')
-		pairFile = outDir+'/pairwise_'+outName+'_pairList.dat'
-		mkPSPairFile(fmPath,pairFile,pairType='batch')
-		logging.info("Pairwise tests to run indicated in {}.".format(pairFile))
+		pairType = 'batch'
+		_runSmallPW(outDir,outName,pairType,pwWhich,fmPath)
 
-		# run pairwise
-		logging.info("Running pairwise code, {}.".format(pwWhich))
-		pwOutPath = outDir+'/pairwise_'+outName+'_fullOut.dat'
-		runPairwise(fmPath,outDir,pwOutPath,pwWhich=pwWhich,pairFile=pairFile)
-		logging.info("Full pairwise output saved at {}.".format(pwOutPath))
-		pwSumPath = outDir+'/pairwise_'+outName+'_summary.dat'
-		writePWSumLong(pwOutPath,pwSumPath)
-		logging.info("Summary of pairwise output saved at {}.".format(pwSumPath))
-
-
+		
 
 	# -QC vs CP
 	if config.getboolean('genWF','runQCCP'):
@@ -686,44 +759,21 @@ def main():
 
 		# get the list of tests
 		fmPath = config.get('genWF','qCCPFMPath')
-		pairFile = outDir+'/pairwise_'+outName+'_pairList.dat'
-		mkPSPairFile(fmPath,pairFile,pairType='batch')
-		logging.info("Pairwise tests to run indicated in {}.".format(pairFile))
-
-		# run pairwise
-		logging.info("Running pairwise code, {}.".format(pwWhich))
-		pwOutPath = outDir+'/pairwise_'+outName+'_fullOut.dat'
-		runPairwise(fmPath,outDir,pwOutPath,pwWhich=pwWhich,pairFile=pairFile)
-		logging.info("Full pairwise output saved at {}.".format(pwOutPath))
-		pwSumPath = outDir+'/pairwise_'+outName+'_summary.dat'
-		writePWSumLong(pwOutPath,pwSumPath)
-		logging.info("Summary of pairwise output saved at {}.".format(pwSumPath))
-
+		pairType = 'QC'
+		_runSmallPW(outDir,outName,pairType,pwWhich,fmPath)
 
 
 
 	# -QC vs Batch
 
 	if config.getboolean('genWF','runQCBatch'):
-		logging.info("-QC vs. Critical Phenotypes, id unexpected changes in process.")
+		logging.info("-QC vs. Batch, id unexpected changes in process.")
 		outName = config.get('genWF','qCBatchName')
 
 		# get the list of tests
 		fmPath = config.get('genWF','qCBatchFMPath')
-		pairFile = outDir+'/pairwise_'+outName+'_pairList.dat'
-		mkPSPairFile(fmPath,pairFile,pairType='batch')
-		logging.info("Pairwise tests to run indicated in {}.".format(pairFile))
-
-		# run pairwise
-		logging.info("Running pairwise code, {}.".format(pwWhich))
-		pwOutPath = outDir+'/pairwise_'+outName+'_fullOut.dat'
-		runPairwise(fmPath,outDir,pwOutPath,pwWhich=pwWhich,pairFile=pairFile)
-		logging.info("Full pairwise output saved at {}.".format(pwOutPath))
-		pwSumPath = outDir+'/pairwise_'+outName+'_summary.dat'
-		writePWSumLong(pwOutPath,pwSumPath)
-		logging.info("Summary of pairwise output saved at {}.".format(pwSumPath))
-
-
+		pairType = 'QCBatch'
+		_runSmallPW(outDir,outName,pairType,pwWhich,fmPath)
 
 
 	logging.info("run completed.")
