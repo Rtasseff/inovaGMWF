@@ -21,7 +21,7 @@
 # 20141114 RAT
 import numpy as np
 import matplotlib.pyplot as plt
-
+nanValues = ['NA','NaN','na','nan']
 
 def fdr_bh(p_full,alpha=.05):
 	"""Performs the Benjamini & Hochberg 1995
@@ -81,10 +81,13 @@ def getGroups(values,labels):
 	"""
 	unique = list(set(labels))
 	groups = []
+	cats = []
 	for label in unique:
-		groups.append(values[labels==label])
+		if label not in nanValues:
+			groups.append(values[labels==label])
+			cats.append(label)
 
-	return(groups,unique)
+	return(groups,cats)
 
 def makeConTable(x,y):
 	"""Given two lists of categorical/binary observations
@@ -105,11 +108,43 @@ def makeConTable(x,y):
 	conTable = np.zeros((xN,yN))
 
 	for i in range(n):
-		if not np.isnan(xInt[i]) and not np.isnan(yInt[i]):
+		if xInt[i] >= 0 and yInt[i]>=0:
 			conTable[xInt[i],yInt[i]]+=1
 
 	return(conTable,xCat,yCat)
 
+def cat2int(y):
+	"""change a set of str category labels with n
+	unique values into an int array with unique 
+	values of numbers from 0 to n-1
+	returns the new int array and list of cat labels.
+		a list of categories corresponding to int value
+	nan values (either 'nan' or the np object) will be preserved.
+	input array y must be an np array for indexing reasons.
+
+	as of now integers cannot have nan values, setting this to -1
+	"""
+	unique = list(set(y))
+	yNew = np.array(np.zeros(len(y)),dtype=int)
+	count = 0
+	cats = []
+	for i in range(len(unique)):
+		tmp = unique[i]
+		missing=False
+		if type(tmp)==np.string_:
+			if tmp in nanValues:missing=True
+		else: 
+			if np.isnan(tmp): missing=True
+
+		if missing:
+			yNew[y==unique[i]] = -1
+		else:
+			yNew[y==unique[i]] = count
+			count += 1
+			cats.append(unique[i])
+			
+
+	return(yNew,cats)
 
 	
 def plotPairwise(x,y,varType=['',''],varName=['',''],outfile=''):
@@ -119,16 +154,20 @@ def plotPairwise(x,y,varType=['',''],varName=['',''],outfile=''):
 	x	np str array, if type = N then this should be 
 		convertable to float array
 	y	same as x but for other variable
-	varType	tuple with 2 values to indicate type of x and y 
-		if left blank we assume x and y are lines form a 
+	varType	list with 2 values to indicate type of x and y 
+		if left blank we assume x and y are split lines form a 
 		feature matrix and the first entry is the label
+	varName list with 2 values to indicate name of x and y
+		if this *and* varType above is blank this will be taken as the 
+		label (first entry) of x and y.
+
 	"""
 	if varType[0]=='':
 		varType[0] = x[0].split(':')[0]
-		varName[0] = x[0].split(':')[-1]
+		if varName[0]=='':varName[0] = x[0]
 		x = x[1:]
 		varType[1] = y[0].split(':')[0]
-		varName[1] = y[0].split(':')[-1]
+		if varName[1]=='':varName[1] = y[0]
 		y = y[1:]
 
 	if not varType[0]=='N' and not varType[0]=='C' and not varType[0]=='B':
@@ -140,13 +179,17 @@ def plotPairwise(x,y,varType=['',''],varName=['',''],outfile=''):
 	if varType[0] == 'B': varType[0] = 'C' # no diff here
 	if varType[1] == 'B': varType[1] = 'C' # no diff here
 
+	
+
 	# check if both numerical:
 	if varType[0]=='N' and varType[1]=='N':
+		xFloat = _getFloat(x)
+		yFloat = _getFloat(y)
 		# scatter plot with line from least squares
-		A = np.vstack([x, np.ones(len(x))]).T
-		m, c = np.linalg.lstsq(A, y)[0]
+		A = np.vstack([xFloat, np.ones(len(x))]).T
+		m, c = np.linalg.lstsq(A, yFloat)[0]
 
-		plt.plot(np.array(x,dtype=float),np.array(y,dtype=float),'o',label='Data')
+		plt.plot(xFloat,yFloat,'o',label='Data')
 		plt.plot(x, m*x + c, 'r', label='Fitted line')
 		plt.legend()
 
@@ -158,19 +201,29 @@ def plotPairwise(x,y,varType=['',''],varName=['',''],outfile=''):
 		# like mosics are avalible in R or pythons statsmodels
 
 		conTable,xCat,yCat = makeConTable(x,y)
+		varInd = 0
+		# we want more bars less stacks so n shoudl be smallest
+		if len(xCat)>len(yCat):
+			tmpCat = yCat
+			yCat = xCat
+			xCat = tmpCat
+			conTable = conTable.T
+			varInd = 1
 		n,m = conTable.shape
+		# consider normalized contigency table
+		conTable = conTable/np.sum(conTable,0)
 		ind = np.arange(m)
 		bottomTmp = np.zeros(m)
 		colorList = ['b','g','r','c','y','m']
 		nColor = len(colorList)
 		colorInd = 0
 		for i in range(n):
-			plt.bar(ind,conTable[i],bottom=bottomTmp,color=colorList[colorInd],label=varName[0]+'::'+str(xCat[i]))
-			bottomTmp = conTable[i]
+			plt.bar(ind,conTable[i],bottom=bottomTmp,color=colorList[colorInd],label=varName[varInd]+'::'+str(xCat[i]))
+			bottomTmp += conTable[i]
 			colorInd +=1
 			if colorInd==nColor:colorInd=0
 
-		plt.ylabel('Count')
+		plt.ylabel('Normalized Count')
 		plt.xlabel(varName[1])
 		plt.xticks(ind,np.array(yCat,dtype=str),rotation=45)
 		plt.legend()
@@ -180,12 +233,12 @@ def plotPairwise(x,y,varType=['',''],varName=['',''],outfile=''):
 	else:
 		#set up variables
 		if varType[0]=='N':
-			varN = np.array(x,dtype=float)
+			varN = _getFloat(x)
 			varC = y
 			varNInd = 0
 			varCInd = 1
 		else:
-			varN = np.array(y,dtype=float)
+			varN = _getFloat(y)
 			varC = x
 			varNInd = 1
 			varCInd = 0
@@ -205,4 +258,14 @@ def plotPairwise(x,y,varType=['',''],varName=['',''],outfile=''):
 
 
 
-
+def _getFloat(x):
+	"""Create a float of this string"""
+	if x.dtype==np.dtype('float64'):xFloat = x
+	else:
+		xFloat = x.copy()
+		for i in range(len(xFloat)):
+			if xFloat[i] in nanValues:
+				xFloat[i] = 'nan'
+		xFloat = np.array(xFloat,dtype=float)
+	return xFloat
+		
