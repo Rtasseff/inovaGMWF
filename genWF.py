@@ -21,12 +21,14 @@ are mapped to FAM when appropriate based on a predefined list of representative 
 import numpy as np
 import subprocess
 import time
-import util 
+import statsUtil 
 import logging
 import sys
 import ConfigParser
 import argparse
 import os
+import genUtil
+import gnmcUtil
 
 floatFmtStr = '%05.4E'
 nanValues = ['NA','NaN','na','nan']
@@ -56,87 +58,6 @@ def getPatientOrder(fmPath,studyID='101',allowedSuffix=['FAM']):
 		_checkPatientID(patient,studyID=studyID,allowedSuffix=allowedSuffix)	
 	return patients
 
-def getRepNBList(nbListPath,):
-	"""Create a list (np str array) that contains
-	all usable newborns for family centric analysis.
-	Used in mapping individuals to -FAM
-	for family centric analysis.
-	Tab sep input list should have all and only
-	newborns used to represent a family
-	unit. An error will be returned if
-	a family id xxx in 101-xxx-NB is 
-	included twice.
-
-	The list will be used for simplicity;
-	effectively -F -M and -NB are 
-	just replaced with -FAM. However,
-	for multi births only the one
-	in the list will be used in the 
-	-FAM family centric analysis.
-	"""
-	nbList = np.loadtxt(nbListPath,dtype=str)
-	n = len(nbList)
-	used = np.zeros(n,dtype=int)
-	# check
-	for i in range(n):
-		nb = nbList[i]
-		if not nb.split('-')[2]=='NB':
-			raise ValueError('ERR0012:non newborn id '+nb+' found in nb list at '+nbListPath)
-		famID = int(nb.split('-')[1])
-		if np.any(famID==used):
-			raise ValueError('ERR0013:duplicate family ids '+str(famID)+' found in nb list at '+nbListPath)
-		used[i] = famID
-	return(nbList)
-
-def _itmiID2isbID(itmiID):
-	"""ITMI puts member ids as prefixes, but ISB puts
-	them as suffixes.  This will change that order.
-	Note that nan will be returned if member id is 
-	not yet accounted for.  For example sample
-	PO-101-657-22 has PO member id that is 
-	not accounted for in any logic so far or
-	analysis done. Note that the 3 sets 
-	of number complicates matters with this ID.
-	"""
-	isbID = 'na'
-	tmp = itmiID.split('-')
-	# hard coded allowed prefixes 
-	if tmp[0] in ['F','M','NB']:
-		if len(tmp)==3:
-			isbID = tmp[1]+'-'+tmp[2]+'-'+tmp[0]
-		if len(tmp)==4:
-			isbID = tmp[2]+'-'+tmp[3]+'-'+tmp[0]+'-'+tmp[1]
-	return(isbID)
-
-def _mapInd2FAM(indID,nbList):
-	"""effectively -F and -M are 
-	just replaced with -FAM. However,
-	for multi births only the one
-	in the list will be used in the 
-	-FAM family centric analysis.
-	The nbList will be used to determine
-	if the passed individual is nb and if so
-	is the representative nb from the list.
-	Returns the new member id and new -FAM id.
-	Non representative nb's or unrecognized 
-	member ids will return na.
-	indID	str, isb formated id for individual sample
-	nbList	np str array of usable representative newborns
-	"""
-	membID = 'na'
-	famID = 'na'
-	tmp = indID.split('-')
-	if len(tmp)==3 and tmp[2] in ['F','M']:
-		membID = tmp[2]
-		famID = tmp[0]+'-'+tmp[1]+'-FAM'
-	# only checking for multi births which have 4 '-'
-	elif np.any(indID==nbList):
-		famID = tmp[0]+'-'+tmp[1]+'-FAM'
-		membID = 'NB'
-	return(famID,membID)
-		
-
-
 
 
 
@@ -144,136 +65,7 @@ def _mapInd2FAM(indID,nbList):
 	
 
 
-def _parseCGSampID(itmiID,nbList,studyID='101'):
-	"""Parse the CG file sample id (equivalent to itmi id)
-	into a usable isb id.  Currently coded for family centric analysis 
-	and returns the family id and separately the member (if id is usable, na otherwise).
-	itmiID	str, itmi id from CG file
-	nbList	np str array of usable representative newborns
-	studyID	str the expected study id, for checking
-	"""
-	# assumes <member>(optional,-<member part 2>)-<study id>-<trio id>
-	# returns the format <study ID>-<family ID>-<representitive member [NB,NB-A]>
-	# memb can be used to check if this is a valid member ie NB,NB-1,M,F 
 
-	if studyID != '101': raise ValueError('ERR:0008, Study not indicated to be 101, logic for 101 maps all features to family centric feature matrix')
-	isbID = _itmiID2isbID(itmiID)
-
-	return(_mapInd2FAM(isbID,nbList))
-
-def _parseVersion(versionStr):
-	# parse the version string form the CG manifest file
-	tmp = versionStr.strip().split('.')
-	if len(tmp) != 3:
-		raise ValueError("ERR:0003 unexpected version "+versionStr)
-	return int(tmp[-1])
-
-def _paresShipDate(shipDateStr):
-	# parse the shipped date string form the CG manifest file
-	tmp = shipDateStr.strip().split('/')
-	if len(tmp) != 3:
-		raise ValueError("ERR:0004 unexpected ship date "+shipDateStr)
-	tmp = tmp[0]+tmp[1]+tmp[2]
-	return int(tmp)
-
-
-def parseMkGenomeBatchFM(manPath,fmPath,samples,nbList,studyID='101',genFeatName="GNMC:BATCH"):
-	"""Parse the source files for the 
-	genomic batch information, currently
-	the manifest file only.
-	Then make and save the batch feature matrix.
-	Currently creating a family centric feature matrix,
-	relevant to study 101, so features not mapable to a 
-	family unit (ie -FAM) will be ignored.
-	manPath 	str, path to input manifest file
-	fmPath 	str, path to output genomic batch feature matrix
-	samples	list of sample ids as strings 
-			related to primary feature matrix
-	nbList	np str array of usable representative newborns
-	studyID	str the expected study id, for checking
-
-	genFeatName 	str, the general name of the these batch features
-	"""
-	# get data from the manifest
-	# mainifest is small, use whats easiest (in mem, np arrays):
-	samples = np.array(samples,dtype=str)
-	data = np.loadtxt(manPath,dtype=str,delimiter='\t')
-	labels = data[0]
-	data = data[1:]
-	n,m = data.shape
-	# create matrix, numerical features, order and version
-	nFeat = 2 # version, ship data
-	# get index for key col
-	if np.sum(labels=='Cust. Subject ID')==1:
-		sampInd = np.arange(m)[labels=='Cust. Subject ID'][0]
-	else:
-		raise ValueError('ERR:0005, Sample ID not found')
-
-	if np.sum(labels=='Assembly Version')==1:
-		versionInd = np.arange(m)[labels=='Assembly Version'][0]
-	else:
-		raise ValueError('ERR:0006, Assembly Version not found')
-
-	if np.sum(labels=='Shipped Date')==1:
-		dateInd = np.arange(m)[labels=='Shipped Date'][0]
-	else:
-		raise ValueError('ERR:0007, Shipped Date not found')
-
-	# hard code the positon and name of the features...
-	featHeader = np.array(['C:NB:'+genFeatName+':version','C:M:'+genFeatName+':version','C:F:'+genFeatName+':version','N:NB:'+genFeatName+':shipDate','N:M:'+genFeatName+':shipDate','N:F:'+genFeatName+':shipDate'],dtype=str)
-	# hard code the possible number of mebers, corrisponding the the feautres above
-	nMembers = 3
-
-	nSamples = len(samples)
-
-	# create blank FM
-	fm = np.array((np.zeros((nFeat*nMembers,nSamples)) + np.nan),dtype='|S15') # making it an str allows us to control format as we go and use non numerical data types if needed later.
-
-	# loop through all data
-	for i in range(n):
-		# get sample ID
-		sampID, memb = _parseCGSampID(data[i,sampInd],nbList,studyID)
-		# hard code the memb index to conform to order above in FAM centric FM
-		membInd = -1
-		if memb=='NB': membInd = 0
-		elif memb=='M': membInd = 1
-		elif memb=='F': membInd = 2
-		# ignore members that do not map to predefined family unit
-		if membInd >= 0:
-			# version
-			iFeat = 0
-			row = iFeat * nMembers + membInd
-			fm[row,sampID==samples] = '%i'%(_parseVersion(data[i,versionInd]))
-			
-
-			# ship date
-			iFeat = 1
-			row = iFeat * nMembers + membInd
-			fm[row,sampID==samples] = '%i'%(_paresShipDate(data[i,dateInd]))
-
-	# save the final matrix
-	saveFM(fm,fmPath,featHeader,samples)
-
-	
-def saveFM(data,fmPath,featHeader,samples):
-	"""Given np arrays, save the feature matrix in 
-	standard format.
-	"""
-	fout = open (fmPath,'w')
-	n,m = data.shape
-	if n!=len(featHeader):
-		raise ValueError('ERR:00009, number of features (rows) and headers not equal')
-	if m!=len(samples):
-		raise ValueError('ERR:00010, number of patients and col not equal')
-	fout.write('.\t')
-	fout.write('\t'.join(samples)+'\n')
-	for i in range(n):
-		fout.write(featHeader[i]+'\t'+'\t'.join(np.array(data[i],dtype=str))+'\n')
-
-	fout.close()
-
-
-#def _catUnorderedFM
 
 def _catOrderedFM(filenames,outfile,skipHeader=True):
 	for fname in filenames:
@@ -529,7 +321,7 @@ def writePWSumLong(pwPath, repPath, minLogQ=2.0,nTopPairs=2):
 			p = np.array(pwTmp[:,5],dtype=str)
 			p = _replaceNANs(p)
 			p = 10.0**(-1*np.array(pwTmp[:,5],dtype=float))
-			_,q,_ = util.fdr_bh(p)
+			_,q,_ = statsUtil.fdr_bh(p)
 			q = -1*np.log10(q)
 			
 			if np.any(q>minLogQ):
@@ -594,7 +386,7 @@ def plotter(pairNameList,fmPath,outDir='.',prefix='pwPlot'):
 		y = fmMini[pairInd[i,1]]
 		outfile = outDir+'/'+prefix+'_'+x[0]+'_vs_'+y[0]+'.png'
 		try:
-			util.plotPairwise(x,y,outfile=outfile,varType=['',''],varName=['',''])
+			statsUtil.plotPairwise(x,y,outfile=outfile,varType=['',''],varName=['',''])
 		except ValueError as ve:
 			logging.warning("Could not create the top scoring pairwise figure {}.\n\t Value error occurred:\n\t{}".format(outfile,ve))
 			print outfile
@@ -664,6 +456,7 @@ def main():
 	# --setup logger and decrease level:
 	logging.getLogger('').handlers = []
 	logging.basicConfig(filename=outDir+'/'+logName, level=logging.INFO, format='%(asctime)s %(message)s')
+	logging.captureWarnings(True)
 
 	# --record some basic information:
 	logging.info("--------------------------------------------------------------")
@@ -675,106 +468,131 @@ def main():
 	
 	pwWhich = config.get('genWF','pwWhich')	
 
-	# need the list of newborns for mapping to correct family
-	repNBListPath = config.get('genWF','repNBListPath')
-	logging.info("List of representative newborns at {}.".format(repNBListPath))
-	nbList = getRepNBList(repNBListPath)
-
+	
 	# need the sample list 
 	fmSampPath = config.get('genWF','fmSampPath')
 	logging.info("Standardizing to sample list in FM at {}.".format(fmSampPath))
 	samples = getPatientOrder(fmSampPath)
 
 
-	# --Genomic metadata
-	if config.getboolean('genWF','runGNMCMetadata'):
-		# ***latter, when we have QC stuff, change this to GMNC metadata
-		logging.info("--Getting GNMC BATCH FM.")  
+	
+	#########--Get GNMC Data--########
+	# get the genomic data from source files
+	if config.getboolean('genWF','runGetGNMCData'): # GNMC data ---->
+		logging.info("--Getting GNMC Data--\n\tRunning scripts to get & format data from source.")
+	
+		# -general info-
+		# path to tsv of the individual sample ids (ids in VCF header for example) 
+		indSampListPath = config.get('genWF','indSampListPath')
+		logging.info("List of individual samples to collect GNMC data on at {}.".format(indSampListPath))
+		indSampList = np.loadtxt(indSampListPath,dtype=str,delimiter='\t')	
 
-		# parse the manifest file for gnmc batch info
-		manPath =  config.get('genWF','manPath')
-		logging.info("Using CG manifest at {}.".format(manPath))
-		gnmcMDFMOutPath = config.get('genWF','gnmcMDFMOutPath') 
-		parseMkGenomeBatchFM(manPath,gnmcMDFMOutPath,samples,nbList)
-		logging.info("GNMC BATCH FM saved at {}.".format(gnmcMDFMOutPath))
+		# need the list of newborns for mapping to correct family
+		repNBListPath = config.get('genWF','repNBListPath')
+		logging.info("List of representative newborns at {}.".format(repNBListPath))
+		nbList = genUtil.getRepNBList(repNBListPath)
 
-	# --Run metadata analysis
-	logging.info("--Running standard association tests on metadata.")
 
-	# -collect data
-	if config.getboolean('genWF','runCollectData'):
-		# feature matrices to use:
-		metaFMs = []
-		# mi rna
-		mirMDFMPath = config.get('genWF','mirMDFMPath')	
-		if mirMDFMPath not in nanValues: metaFMs.append(mirMDFMPath)
-		# rna seq
-		rnasMDFMPath = config.get('genWF','rnasMDFMPath')
-		if rnasMDFMPath not in nanValues: metaFMs.append(rnasMDFMPath)
-		# methylation 
-		methMDFMPath = config.get('genWF','methMDFMPath')
-		if methMDFMPath not in nanValues: metaFMs.append(methMDFMPath)
-		# genomic 
-		gnmcMDFMPath = config.get('genWF','gnmcMDFMPath')
-		if gnmcMDFMPath not in nanValues: metaFMs.append(gnmcMDFMPath)
+		# -Batch-
 
-		clinDataFMPath = config.get('genWF','clinDataFMPath')
-		metaFMs.append(clinDataFMPath)
+		if config.getboolean('genWF','runGetGNMCBatch'):
+			logging.info("-Getting GNMC BATCH FM-.")  
 
-		logging.info("Considering metadata data stored at:")
-		for fm in metaFMs:
-			logging.info("\t{}.".format(fm))
-
-		# cat matrices together
-		combMDFMOutPath = config.get('genWF','combMDFMOutPath')
-		catFM(metaFMs,samples,combMDFMOutPath,studyID='101')
-		logging.info("Metadata stored in single FM at {}.".format(combMDFMOutPath))
-
-	# filter for pairwise
-	if config.getboolean('genWF','runFilterFM'):
-		logging.info("Filtering metadata for basic statistical tests.")
-		filteredFMInPath = config.get('genWF','filteredFMInPath')
-		filteredFMOutPath = config.get('genWF','filteredFMOutPath')
-		filterFM(filteredFMInPath,filteredFMOutPath,minObs=0)
-		logging.info("Filtered metadata at {} and saved to {}.".format(filteredFMInPath,filteredFMOutPath))
+			# parse the manifest file for gnmc batch info
+			manPath =  config.get('genWF','manPath')
+			logging.info("Using CG manifest at {}.".format(manPath))
+			gnmcIndMDFMOutPath = config.get('genWF','gnmcIndMDFMOutPath') 
+			gnmcUtil.parseMkGenomeBatchFM(manPath,gnmcIndMDFMOutPath,indSampList)
+			logging.info("Individual GNMC BATCH FM saved at {}.".format(gnmcIndMDFMOutPath))
+			# move to family based FM
+			gnmcFamMDFMOutPath = config.get('genWF','gnmcFamMDFMOutPath')
+			genUtil.indFM2FamFM(gnmcIndMDFMOutPath,gnmcFamMDFMOutPath,nbList,samples)
+			logging.info("Family based GNMC BATCH FM saved at {}.".format(gnmcFamMDFMOutPath))
 
 
 
-	# -batch vs CP
-	if config.getboolean('genWF','runBatchCP'):
-		logging.info("-Batch vs. Critical Phenotypes, id bias in sampling.")
-		outName = config.get('genWF','batchCPName')
-
-		# get the list of tests
-		fmPath = config.get('genWF','batchCPFMPath')
-		pairType = 'batch'
-		_runSmallPW(outDir,outName,pairType,pwWhich,fmPath)
-
-		
-
-	# -QC vs CP
-	if config.getboolean('genWF','runQCCP'):
-		logging.info("-QC vs. Critical Phenotypes, id bias in unknown latent variables.")
-		outName = config.get('genWF','qCCPName')
-
-		# get the list of tests
-		fmPath = config.get('genWF','qCCPFMPath')
-		pairType = 'QC'
-		_runSmallPW(outDir,outName,pairType,pwWhich,fmPath)
+	# <----- GNMC data 
 
 
+	###### --Run metadata analysis-- ######
+	if config.getboolean('genWF','runMetadata'): # metadata analysis --->
+		logging.info("--Metadata Analysis--\n\tRunning standard association tests on metadata.")
 
-	# -QC vs Batch
+		# -collect data
+		if config.getboolean('genWF','runCollectData'):
+			# feature matrices to use:
+			metaFMs = []
+			# mi rna
+			mirMDFMPath = config.get('genWF','mirMDFMPath')	
+			if mirMDFMPath not in nanValues: metaFMs.append(mirMDFMPath)
+			# rna seq
+			rnasMDFMPath = config.get('genWF','rnasMDFMPath')
+			if rnasMDFMPath not in nanValues: metaFMs.append(rnasMDFMPath)
+			# methylation 
+			methMDFMPath = config.get('genWF','methMDFMPath')
+			if methMDFMPath not in nanValues: metaFMs.append(methMDFMPath)
+			# genomic 
+			gnmcMDFMPath = config.get('genWF','gnmcMDFMPath')
+			if gnmcMDFMPath not in nanValues: metaFMs.append(gnmcMDFMPath)
 
-	if config.getboolean('genWF','runQCBatch'):
-		logging.info("-QC vs. Batch, id unexpected changes in process.")
-		outName = config.get('genWF','qCBatchName')
+			clinDataFMPath = config.get('genWF','clinDataFMPath')
+			metaFMs.append(clinDataFMPath)
 
-		# get the list of tests
-		fmPath = config.get('genWF','qCBatchFMPath')
-		pairType = 'QCBatch'
-		_runSmallPW(outDir,outName,pairType,pwWhich,fmPath)
+			logging.info("Considering metadata data stored at:")
+			for fm in metaFMs:
+				logging.info("\t{}.".format(fm))
 
+			# cat matrices together
+			combMDFMOutPath = config.get('genWF','combMDFMOutPath')
+			catFM(metaFMs,samples,combMDFMOutPath,studyID='101')
+			logging.info("Metadata stored in single FM at {}.".format(combMDFMOutPath))
+
+		# filter for pairwise
+		if config.getboolean('genWF','runFilterFM'):
+			logging.info("Filtering metadata for basic statistical tests.")
+			filteredFMInPath = config.get('genWF','filteredFMInPath')
+			filteredFMOutPath = config.get('genWF','filteredFMOutPath')
+			filterFM(filteredFMInPath,filteredFMOutPath,minObs=0)
+			logging.info("Filtered metadata at {} and saved to {}.".format(filteredFMInPath,filteredFMOutPath))
+
+
+
+		# -batch vs CP
+		if config.getboolean('genWF','runBatchCP'):
+			logging.info("-Batch vs. Critical Phenotypes, id bias in sampling.")
+			outName = config.get('genWF','batchCPName')
+
+			# get the list of tests
+			fmPath = config.get('genWF','batchCPFMPath')
+			pairType = 'batch'
+			_runSmallPW(outDir,outName,pairType,pwWhich,fmPath)
+
+			
+
+		# -QC vs CP
+		if config.getboolean('genWF','runQCCP'):
+			logging.info("-QC vs. Critical Phenotypes, id bias in unknown latent variables.")
+			outName = config.get('genWF','qCCPName')
+
+			# get the list of tests
+			fmPath = config.get('genWF','qCCPFMPath')
+			pairType = 'QC'
+			_runSmallPW(outDir,outName,pairType,pwWhich,fmPath)
+
+
+
+		# -QC vs Batch
+
+		if config.getboolean('genWF','runQCBatch'):
+			logging.info("-QC vs. Batch, id unexpected changes in process.")
+			outName = config.get('genWF','qCBatchName')
+
+			# get the list of tests
+			fmPath = config.get('genWF','qCBatchFMPath')
+			pairType = 'QCBatch'
+			_runSmallPW(outDir,outName,pairType,pwWhich,fmPath)
+
+	# <--- metadata analysis
 
 	logging.info("run completed.")
 	logging.info("")
