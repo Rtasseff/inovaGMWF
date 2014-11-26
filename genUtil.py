@@ -9,7 +9,7 @@ RAT 20141121
 import warnings
 
 import numpy as np
-
+import statsUtil 
 
 def saveFM(data,fmPath,featHeader,samples):
 	"""Given np arrays, save the feature matrix in 
@@ -337,9 +337,73 @@ def indFM2FamFM(indFMPath,famFMPath,nbList,famSample):
 			
 		
 
+def plotter(pairList,fmPath,outDir='.',prefix='pwPlot'):
+	""" Given the input feature matrix at fmPath,
+	create a pairwise plot for each pair contained in
+	pairList.  If pairList is a str, assume its a path
+	The file should have a tab sep pair of
+	feature names, one on each line. 
+	otherwise assume its a list of 2 value lists 
+	of the feautre names.  Plots saved as:
+	<outDir>/<prefix>_<name 1>_vs_<name 2>.png.
+	"""
+	if type(pairList)==str:
+		pairNameList = np.loadtxt(pairList,dtype=str,delimiter='\t')
+	else:
+		pairNameList = pairList
+
+	n = len(pairNameList)
+	fm = open(fmPath)
+	# skip header 
+	line = fm.next()
+	data = line.strip().split('\t')
+	# assuming pair list is short so we will allocate as we go
+	# create mini matrix for more efficent pair finding
+	fmMini = np.array(data,dtype=str)
+	# create indexing matrix for fast recall
+	pairInd = np.zeros((n,2),dtype=int) - 1
+	fmMiniCount = 1 # skip header row
+	for line in fm:
+		data = line.strip().split('\t')
+		fname = data[0]
+		keep = False
+		# check all pairs for same
+		for i in range(n):
+			# pairs can have same name so go through all of them
+			if fname==pairNameList[i][0]:
+				keep = True
+				pairInd[i,0] = fmMiniCount
+
+			elif fname==pairNameList[i][1]:
+				keep = True
+				pairInd[i,1] = fmMiniCount
+		# added if needed, but dont add if already added
+		if keep:
+			fmMini = np.vstack([fmMini,data])
+			fmMiniCount += 1
+			
+	fm.close()
+	# now we have the mini fm lets do the plots
+	for i in range(n):
+		x = fmMini[pairInd[i,0]]
+		y = fmMini[pairInd[i,1]]
+		outfile = outDir+'/'+prefix+'_'+x[0]+'_vs_'+y[0]+'.png'
+		try:
+			statsUtil.plotPairwise(x,y,outfile=outfile,varType=['',''],varName=['',''])
+		except ValueError as ve:
+			logging.warning("Could not create the top scoring pairwise figure {}.\n\t Value error occurred:\n\t{}".format(outfile,ve))
+			print outfile
+			print ve
+			
+	#remove mini fm
+	del fmMini
+	del pairInd
 
 
+def main():
+	pairPath = 'batchPairs.tsv'
+	fmPath = '/titan/ITMI1/projects/gamcop/data/featureMatrices/comb_CP_META_filtered_20141125.fm'
+	plotter(pairPath,fmPath,outDir='.',prefix='pwPlot')
 
-
-
-
+if __name__ == '__main__':
+	main()

@@ -21,6 +21,9 @@
 # 20141114 RAT
 import numpy as np
 import matplotlib.pyplot as plt
+import warnings
+
+
 nanValues = ['NA','NaN','na','nan']
 
 def fdr_bh(p_full,alpha=.05):
@@ -179,20 +182,24 @@ def plotPairwise(x,y,varType=['',''],varName=['',''],outfile=''):
 	if varType[0] == 'B': varType[0] = 'C' # no diff here
 	if varType[1] == 'B': varType[1] = 'C' # no diff here
 
-	
 
 	# check if both numerical:
 	if varType[0]=='N' and varType[1]=='N':
 		xFloat = _getFloat(x)
 		yFloat = _getFloat(y)
-		# scatter plot with line from least squares
-		A = np.vstack([xFloat, np.ones(len(x))]).T
-		m, c = np.linalg.lstsq(A, yFloat)[0]
-
 		plt.plot(xFloat,yFloat,'o',label='Data')
-		plt.plot(x, m*x + c, 'r', label='Fitted line')
-		plt.legend()
+		try:
+			# scatter plot with line from least squares
+			A = np.vstack([xFloat, np.ones(len(x))]).T
+			m, c = np.linalg.lstsq(A, yFloat)[0]
+			plt.plot(x, m*x + c, 'r', label='Fitted line')
+			plt.legend()
 
+		except ValueError as ve:
+			warnings.warn("Could not fit line for "+varName[0]+" vs "+varName[1]+": "+str(ve),UserWarning)
+
+		
+		
 		plt.xlabel(varName[0])
 		plt.ylabel(varName[1])
 	elif varType[0]=='C' and varType[1]=='C':
@@ -224,13 +231,14 @@ def plotPairwise(x,y,varType=['',''],varName=['',''],outfile=''):
 			if colorInd==nColor:colorInd=0
 
 		plt.ylabel('Normalized Count')
-		plt.xlabel(varName[1])
-		plt.xticks(ind,np.array(yCat,dtype=str),rotation=45)
+		plt.xlabel(varName[abs(varInd-1)])
+		plt.xticks(ind,np.array(yCat,dtype=str),rotation=20)
 		plt.legend()
 			
 
 
 	else:
+		# number vs category 
 		#set up variables
 		if varType[0]=='N':
 			varN = _getFloat(x)
@@ -245,7 +253,7 @@ def plotPairwise(x,y,varType=['',''],varName=['',''],outfile=''):
 
 		groups,unique = getGroups(varN,varC)
 		bp = plt.boxplot(groups)
-		plt.xticks(range(1,(len(unique)+1)),unique,rotation=45)
+		plt.xticks(range(1,(len(unique)+1)),unique,rotation=20)
 		plt.xlabel(varName[varCInd])
 		plt.ylabel(varName[varNInd])
 	
