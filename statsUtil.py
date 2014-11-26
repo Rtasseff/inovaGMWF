@@ -182,7 +182,7 @@ def plotPairwise(x,y,varType=['',''],varName=['',''],outfile=''):
 	if varType[0] == 'B': varType[0] = 'C' # no diff here
 	if varType[1] == 'B': varType[1] = 'C' # no diff here
 
-
+	
 	# check if both numerical:
 	if varType[0]=='N' and varType[1]=='N':
 		xFloat = _getFloat(x)
@@ -202,6 +202,7 @@ def plotPairwise(x,y,varType=['',''],varName=['',''],outfile=''):
 		
 		plt.xlabel(varName[0])
 		plt.ylabel(varName[1])
+		#plt.ylabel(varName[1].split(':')[-1])
 	elif varType[0]=='C' and varType[1]=='C':
 		# right now we are just going with a simple 
 		# stacked bar plots, more advanced things
@@ -232,12 +233,15 @@ def plotPairwise(x,y,varType=['',''],varName=['',''],outfile=''):
 
 		plt.ylabel('Normalized Count')
 		plt.xlabel(varName[abs(varInd-1)])
-		plt.xticks(ind,np.array(yCat,dtype=str),rotation=20)
+		plt.xticks(ind,np.array(yCat,dtype=str),rotation=10)
 		plt.legend()
 			
 
 
 	else:
+		#####
+		#fig = plt.figure(figsize=(8,3))
+
 		# number vs category 
 		#set up variables
 		if varType[0]=='N':
@@ -253,9 +257,10 @@ def plotPairwise(x,y,varType=['',''],varName=['',''],outfile=''):
 
 		groups,unique = getGroups(varN,varC)
 		bp = plt.boxplot(groups)
-		plt.xticks(range(1,(len(unique)+1)),unique,rotation=20)
+		plt.xticks(range(1,(len(unique)+1)),unique,rotation=10)
 		plt.xlabel(varName[varCInd])
 		plt.ylabel(varName[varNInd])
+		#plt.ylabel(varName[varNInd].split(':')[-1])
 	
 	if outfile=='':
 		plt.show()
