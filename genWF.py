@@ -21,6 +21,7 @@ are mapped to FAM when appropriate based on a predefined list of representative 
 import numpy as np
 import subprocess
 import time
+import shutil
 import statsUtil 
 import logging
 import sys
@@ -236,15 +237,21 @@ def mkPSPairFile(fmPath,foutPath,pairType='batch'):
 	QCBatch	compare batch features to QC features to detect process changes
 	"""
 	if pairType=='batch':
-		feildInd = [3,3]
-		lookfor = ['BATCH','Critical_Phenotype']
+		feildInd = [3,3,3]
+		lookfor = ['BATCH','Critical_Phenotype','summary_data']
 		nameLists =  _getFeatureNamesByGroup(fmPath,lookfor,feildInd)
-		_mkPairFile(nameLists[0],nameLists[1],foutPath)
+		markerList = nameLists[0]
+		# change as of 20141222 to include summary_data features with Critical_Phenotype features
+		predictorList = np.append(nameLists[1],nameLists[2])
+		_mkPairFile(markerList,predictorList,foutPath)
 	elif pairType=='QC':
-		feildInd = [3,3]
-		lookfor = ['QC','Critical_Phenotype']
+		feildInd = [3,3,3]
+		lookfor = ['QC','Critical_Phenotype','summary_data']
 		nameLists =  _getFeatureNamesByGroup(fmPath,lookfor,feildInd)
-		_mkPairFile(nameLists[0],nameLists[1],foutPath)
+		markerList = nameLists[0]
+		# change as of 20141222 to include summary_data features with Critical_Phenotype features
+		predictorList = np.append(nameLists[1],nameLists[2])
+		_mkPairFile(markerList,predictorList,foutPath)
 	elif pairType=='QCBatch':
 		feildInd = [3,3]
 		lookfor = ['QC','BATCH']
@@ -401,6 +408,7 @@ def main():
 	else:
 		os.makedirs(outDir)
 
+	
 	# --setup logger and decrease level:
 	logging.getLogger('').handlers = []
 	logging.basicConfig(filename=outDir+'/'+logName, level=logging.INFO, format='%(asctime)s %(message)s')
@@ -413,6 +421,10 @@ def main():
 
 	# --general setup
 	logging.info("--Getting some general information.")
+
+	# put a copy of the config file in the output dir
+	shutil.copyfile(args.config,outDir+'/wf.cfg')
+	logging.info('A copy of the configuration file for this run was saved to '+outDir+'/wf.cfg')
 	
 	pwWhich = config.get('genWF','pwWhich')	
 
@@ -482,6 +494,11 @@ def main():
 			# genomic 
 			gnmcMDFMPath = config.get('genWF','gnmcMDFMPath')
 			if gnmcMDFMPath not in nanValues: metaFMs.append(gnmcMDFMPath)
+			# extra data
+			extraMDFMPaths = config.get('genWF','extraMDFMPaths')
+			if extraMDFMPaths not in nanValues: 
+				for path in extraMDFMPaths.strip().split(','):
+					metaFMs.append(path)
 
 			clinDataFMPath = config.get('genWF','clinDataFMPath')
 			metaFMs.append(clinDataFMPath)
