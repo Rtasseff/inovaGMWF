@@ -147,7 +147,7 @@ def getQCFM_VCF(vcfPath,fmOutPath,genFeatName="GNMC:QC",sampStartInd = 9):
 	nFeat = 5
 
 	featName = np.array(np.zeros(nFeat),dtype='|S60')
-	featName[miwInd] = 'N:'+genFeatName+':MIE_count'
+	featName[mieInd] = 'N:'+genFeatName+':MIE_count'
 	featName[vqlowInd] = 'N:'+genFeatName+':VQLow_count'
 	featName[missInd] = 'N:'+genFeatName+':miss_count'
 	featName[homoInd] = 'N:'+genFeatName+':homoz_count'
@@ -166,6 +166,7 @@ def getQCFM_VCF(vcfPath,fmOutPath,genFeatName="GNMC:QC",sampStartInd = 9):
 		if not readLine:
 			# check if this is needed comment 
 			if col[0]=='#CHROM':
+				readLine = True
 				sampleList = np.array(col[sampStartInd:],dtype=str)
 				nSamp = len(sampleList)
 				data = np.zeros((nFeat,nSamp))
@@ -180,20 +181,25 @@ def getQCFM_VCF(vcfPath,fmOutPath,genFeatName="GNMC:QC",sampStartInd = 9):
 			calls = col[sampStartInd:]
 			# check len
 			if len(calls)!=nSamp:
-				raise ValueError("ERR:0009, number of calls and samples does not match in "+vcfPath
+				raise ValueError("ERR:0009, number of calls and samples does not match in "+vcfPath)
+
+			#print calls[0]
 			for i in range(nSamp):
 				err = False
-				if calls[i].find(".") <> -1: 
-					data[missInd,i] += 1
-					err = True
+				
 				if calls[i].find("VQLOW") <> -1: 
 					data[vqlowInd,i] += 1
 					err = True
 				if calls[i].find("MIE") <> -1: 
 					data[mieInd,i] += 1
 					err = True
+
+				callTmp = calls[i].split(':')[0]
+				if callTmp.find(".") <> -1: 
+					data[missInd,i] += 1
+					err = True
 				if not err:
-					tmp = calls[i].split('/')
+					tmp = callTmp.split('/')
 					if len(tmp)==2:
 						if tmp[0]==tmp[1]:data[homoInd,i] += 1
 						else: data[hetroInd,i] += 1
@@ -205,22 +211,28 @@ def getQCFM_VCF(vcfPath,fmOutPath,genFeatName="GNMC:QC",sampStartInd = 9):
 	### <-- in vcf
 
 	# done with vcf save feature matrix
-	saveFM(data,fmOutPath,featName,sampleList)
+	genUtil.saveFM(data,fmOutPath,featName,sampleList)
 
 
 def main():
-	# test functions
-	wrkDir = '/Users/RTasseff/Projects/INOVA/DF5/basePipeLine'
-	manPath = wrkDir+'/P286_Data_Delivery_TOTAL_021214.txt'
-	fmPath = wrkDir+'/test_IND_20141121.fm'
-	samples = wrkDir+'/sampIDList_ITMI_VCF_DF5.tsv'
-	famFMPath = wrkDir+'/test_FAM_20141121.fm'
-	famSample = wrkDir+'/famID_DF5.tsv'
-	nbList = wrkDir+'/repNBList.tsv'
+#	# test functions
+#	wrkDir = '/Users/RTasseff/Projects/INOVA/DF5/basePipeLine'
+#	manPath = wrkDir+'/P286_Data_Delivery_TOTAL_021214.txt'
+#	fmPath = wrkDir+'/test_IND_20141121.fm'
+#	samples = wrkDir+'/sampIDList_ITMI_VCF_DF5.tsv'
+#	famFMPath = wrkDir+'/test_FAM_20141121.fm'
+#	famSample = wrkDir+'/famID_DF5.tsv'
+#	nbList = wrkDir+'/repNBList.tsv'
+#
+#	parseMkGenomeBatchFM(manPath,fmPath,samples)
+#
+#	genUtil.indFM2FamFM(fmPath,famFMPath,nbList,famSample)
 
-	parseMkGenomeBatchFM(manPath,fmPath,samples)
+	# get the QC FM from comand line
+	vcfPath = sys.argv[1]
+	fmOutPath = sys.argv[2]
 
-	genUtil.indFM2FamFM(fmPath,famFMPath,nbList,famSample)
+	getQCFM_VCF(vcfPath,fmOutPath)
 
 if __name__ == '__main__':
 	main()
