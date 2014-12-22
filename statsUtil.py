@@ -190,14 +190,18 @@ def plotPairwise(x,y,varType=['',''],varName=['',''],outfile=''):
 		plt.plot(xFloat,yFloat,'o',label='Data')
 		try:
 			# scatter plot with line from least squares
-			A = np.vstack([xFloat, np.ones(len(x))]).T
-			m, c = np.linalg.lstsq(A, yFloat)[0]
-			plt.plot(x, m*x + c, 'r', label='Fitted line')
+			A = np.vstack([xFloat, np.ones(len(xFloat))]).T
+			# must ignore all nan values
+			keep = np.array(np.ones(len(xFloat)),dtype=bool)
+			keep[np.isnan(xFloat)]=False
+			keep[np.isnan(yFloat)]=False
+			m, c = np.linalg.lstsq(A[keep], yFloat[keep])[0]
+			plt.plot(xFloat, m*xFloat + c, 'r', label='Fitted line')
 			plt.legend()
 
 		except ValueError as ve:
 			warnings.warn("Could not fit line for "+varName[0]+" vs "+varName[1]+": "+str(ve),UserWarning)
-
+		
 		
 		
 		plt.xlabel(varName[0])
