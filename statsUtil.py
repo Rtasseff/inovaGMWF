@@ -187,16 +187,21 @@ def plotPairwise(x,y,varType=['',''],varName=['',''],outfile=''):
 	if varType[0]=='N' and varType[1]=='N':
 		xFloat = _getFloat(x)
 		yFloat = _getFloat(y)
-		plt.plot(xFloat,yFloat,'o',label='Data')
+
+		# must ignore all nan values
+		keep = np.array(np.ones(len(xFloat)),dtype=bool)
+		keep[np.isnan(xFloat)]=False
+		keep[np.isnan(yFloat)]=False
+		# non parametric tests used so lets consider ranks
+		xRank = np.argsort(np.argsort(xFloat[keep]))
+		yRank = np.argsort(np.argsort(yFloat[keep]))
+
+		plt.plot(xRank,yRank,'o',label='Data')
 		try:
 			# scatter plot with line from least squares
-			A = np.vstack([xFloat, np.ones(len(xFloat))]).T
-			# must ignore all nan values
-			keep = np.array(np.ones(len(xFloat)),dtype=bool)
-			keep[np.isnan(xFloat)]=False
-			keep[np.isnan(yFloat)]=False
-			m, c = np.linalg.lstsq(A[keep], yFloat[keep])[0]
-			plt.plot(xFloat, m*xFloat + c, 'r', label='Fitted line')
+			A = np.vstack([xRank, np.ones(len(xRank))]).T
+			m, c = np.linalg.lstsq(A, yRank)[0]
+			plt.plot(xRank, m*xRank + c, 'r', label='Fitted line')
 			plt.legend()
 
 		except ValueError as ve:
@@ -204,8 +209,8 @@ def plotPairwise(x,y,varType=['',''],varName=['',''],outfile=''):
 		
 		
 		
-		plt.xlabel(varName[0])
-		plt.ylabel(varName[1])
+		plt.xlabel(varName[0]+' ranks')
+		plt.ylabel(varName[1]+' ranks')
 		#plt.ylabel(varName[1].split(':')[-1])
 	elif varType[0]=='C' and varType[1]=='C':
 		# right now we are just going with a simple 
