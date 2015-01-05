@@ -242,8 +242,8 @@ def readBiMat(path,nRow):
 	assumes 8 bit unsigned char, will put it 
 	an np array by dividing into nRows
 	type = unsigned 8 bit integer
-	Sets all '0' values to nan, which is the 
-	convention on split transcripts.
+	Note that all '0' values refer to nan as
+	is the convention in split-transcripts.
 	"""
 	# open and read the bianary file
 	tmp = open(path,'rb').next()
@@ -258,7 +258,6 @@ def readBiMat(path,nRow):
 	data = np.array(struct.unpack(fmt,tmp),dtype='uint8')
 	# put into matrix 
 	X = np.reshape(data,(nRow,nCol))
-	X[X==0] = np.nan
 	
 	return(X)
 
@@ -306,7 +305,7 @@ class RegionManifestReader:
 		chrom = values[self.IND_CHROM]
 		startPos= values[self.IND_START]
 		stopPos = values[self.IND_STOP]
-		nVar = values[self.IND_NUM]
+		nVar = int(values[self.IND_NUM])
 		dataPath = self.dataDirPrePath+values[self.IND_DATA_PATH]
 		region = Region(name,chrom,startPos,stopPos,nVar,dataPath)
 		return region
@@ -338,15 +337,124 @@ class Region:
 		self.nVar = nVar
 		self.dataPath = dataPath
 
-	def getData():
-		"""Get the corrisponding data matrix for this transcript 
+	def getData(self):
+		"""Get the corresponding data matrix for this transcript 
 		from the binary matrix.
 		"""
-		readBiMat(self.dataPath,self.nVar)
+		X = readBiMat(self.dataPath,self.nVar)
+		return X
 
 
 
-				
+def _removeMissing(X,maxMiss):
+	"""Return a boolean 
+	vector to indicate which samples
+	to keep from X based on missing calls < maxMiss.
+	Assumes a call of 0 is missing (convention 
+	in split-transcripts)
+	"""
+	n,m = X.shape
+	keep = np.array(np.ones(m/2),dtype=bool)
+	missed = np.sum(X==0,0)
+	for i in range(0,m,2):
+		if ((missed[i]+missed[i+1])/(n*2.0)) > maxMiss: keep[i/2]=0
+	return keep
+		
+def _isMinor(x,miAFrac=.49):
+	"""Given a vector of calls, x, return an
+	int vector in corresponding order that determines if 
+	calls are minor (1) or not (0).
+	Calls are considered to be minor alleles iff their 
+	call fraction in this population is < miAFrac. 
+	"""
+	n = len(x)
+	unique = list(set(x))
+	minor = np.array(np.zeros(n),dtype=int)
+	for value in unique:
+		# ignore zeros, used as missing by convention
+		if value > 0:
+			# calculate call fraction
+			frac = np.sum(x==value)/float(n)
+			if frac<miAFrac:
+				minor[x==value]=1
+	return minor
+
+def _one2twoCol(x):
+	"""Since samples are represented by two columns 
+	in our genotype matrix, it is sometimes 
+	needed to create a corresponding 2x vector
+	such that each adjacent column is a copy of
+	the original.  This will provide the same value
+ 	for the same samples over both columns in the 
+	genotype matrix.
+	"""
+	y = np.array(np.ones(len(x)*2),dtype=x.dtype)
+	y[::2] = x
+	y[1::2] = x
+	return y
+
+
+def getMiAC(X,miAFrac=.49,maxMiss=.2):
+	"""given a matrix of variant calls, X, 
+	find the minor allele count for each sample 
+	and return a vector of the results.
+	Assumes X is nxm where:
+	n = number of variant positions
+	m = number of samples x 2
+	Two adjacent columns are given to each sample,
+	which is consistent with the binary matrices from 
+	split-transcript and from the VCF files as these 
+	typically describe diploids (2 copies of each potion).
+	Calls are considered to be minor alleles iff their 
+	call fraction in this population is < miAFrac.
+	Samples with more than maxMiss missing (or nan) calls
+	in this region will be marked as nan.
+	"""
+	n,m = X.shape
+	fMiAC = np.zeros(m/2)
+
+	# first get rid of smaples with excess missing calls
+	# NOTE: not sure if we should do this before or after 
+	#	wec calculate fractions...
+	keep = _removeMissing(X,maxMiss)
+	keep2 = _one2twoCol(keep)
+	for i in range(n):
+		minor = _isMinor(X[i,keep2],miAFrac)
+		fMiAC[keep] += minor[::2] + minor[1::2]
+	fMiAC[~keep] = np.nan
+	return fMiAC
+
+def mkRegionFM(regionManifestPath,sampleIDPath,outFMPath,fBaseName='N:GNMC:data',miAFrac=.49,maxMiss=.2):
+	"""Make region based data FM,
+	on the individual sample level, given 
+	the transcript manifest and corresponding 
+	data as extracted from split-transcripts.
+	Currently calculate minor allele count (MiAC) features.
+	"""
+	#must have minNum or more variants to count as region
+	minNum = 2
+
+	# get the manifest file 
+	regionReader = RegionManifestReader(regionManifestPath)
+	samples = np.loadtxt(sampleIDPath,dtype=str,delimiter='\t')
+	features = []
+	
+	count = 0
+	maxCount = 100000
+	for region in regionReader:
+		#try:
+		if region.nVar>=minNum:
+			X = region.getData()
+			features.append(fBaseName+':MiAC_'+region.name)
+			fMiAC = getMiAC(X,miAFrac,maxMiss)
+			if count==0:data = fMiAC
+			else: data = np.vstack([data,fMiAC])
+
+		count = count+1 
+		if count>maxCount: break
+
+
+	genUtil.saveFM(data,outFMPath,features,samples)
 
 	
 
@@ -375,20 +483,27 @@ def main():
 #	getQCFM_VCF(vcfPath,fmOutPath)
 #	# <-
 
-	# -addup QC regions ->
-	# done seperatly 
-	# loops though all regions to sum up a single FM
-	# for QC variables, assumes that all files are 
-	# in the same dir with <qcRegionName>_i.fm 
-	# where i = 1,2...,numQCRegions
-	qcRegionDir = sys.argv[1]
-	qcRegionName = sys.argv[2]
-	numQCRegions = sys.argv[3]
-	outQCFMPath = sys.argv[4]
-	summQCRegionFM(qcRegionDir,qcRegionName,numQCRegions,outQCFMPath)
-	# <-
+#	# -addup QC regions ->
+#	# done seperatly 
+#	# loops though all regions to sum up a single FM
+#	# for QC variables, assumes that all files are 
+#	# in the same dir with <qcRegionName>_i.fm 
+#	# where i = 1,2...,numQCRegions
+#	qcRegionDir = sys.argv[1]
+#	qcRegionName = sys.argv[2]
+#	numQCRegions = sys.argv[3]
+#	outQCFMPath = sys.argv[4]
+#	summQCRegionFM(qcRegionDir,qcRegionName,numQCRegions,outQCFMPath)
+#	# <-
 
 
+	
+	# --Feature Matrix for transcript level data
+	# running on 1 core on SGI for 61K regions requiered 13.5 hours
+	regionManifestPath='/isb/rtasseff/data/transcripts_20141125/transcriptManifest_20141125.dat'
+	sampleIDPath='/isb/rtasseff/data/transcripts_20141125/sampIDList_ITMI_VCF_DF5.tsv'
+	outFMPath='/isb/rtasseff/data/transcripts_20141125/data_GNMC_Trans_IND_20141223.fm'
+	mkRegionFM(regionManifestPath,sampleIDPath,outFMPath,fBaseName='N:GNMC:data',miAFrac=.49,maxMiss=.2)
 
 
 if __name__ == '__main__':
