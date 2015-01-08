@@ -387,7 +387,10 @@ def plotter(pairList,fmPath,outDir='.',prefix='pwPlot'):
 	for i in range(n):
 		x = fmMini[pairInd[i,0]]
 		y = fmMini[pairInd[i,1]]
-		outfile = outDir+'/'+prefix+'_'+x[0]+'_vs_'+y[0]+'.png'
+		# feature names can make bad file names
+		# replace : with -
+		# and . or / with '?'
+		outfile = outDir+'/'+prefix+'_'+x[0].replace('/','?').replace('.','?').replace(':','-')+'_vs_'+y[0].replace('/','?').replace('.','?').replace(':','-')+'.png'
 		try:
 			statsUtil.plotPairwise(x,y,outfile=outfile,varType=['',''],varName=['',''])
 		except ValueError as ve:

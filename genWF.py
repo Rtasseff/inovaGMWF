@@ -30,6 +30,7 @@ import argparse
 import os
 import genUtil
 import gnmcUtil
+import random
 
 floatFmtStr = '%05.4E'
 nanValues = ['NA','NaN','na','nan']
@@ -42,7 +43,7 @@ def _checkPatientID(patientID,studyID='101',allowedSuffix=['FAM']):
 	tmp = patientID.split('-')
 	if tmp[0] != studyID:
 		raise ValueError ("ERR:0001 unexpected study id "+str(tmp[0]))
-	elif '-'.join(tmp[2:]) not in allowedSuffix: 
+	elif (not allowedSuffix[0]=='any') and ('-'.join(tmp[2:]) not in allowedSuffix): 
 		raise ValueError ("ERR:0002 unexpected member id "+'-'.join(tmp[2:])+'. Suffixes limited to '+str(allowedSuffix))
 
 
@@ -291,6 +292,72 @@ def _replaceNANs(x):
 	return (x)
 
 
+def writePWSumLongSepTar(pwPath, repPath, minLogQ=2.0,nTopPairs=2):
+	"""Takes the pairwise output at pwPath 
+	and parses it into a summary report at repPath
+	by filtering out pairs with a log_10(FDR Q)<minLogQ
+	and by dividing the ouput up by the feature name of the 
+	target features.
+
+	Assumes pairwise output format from pairwise-2.0.0
+	& column 0 represent covariates of interest (enforced in workflow by suppling pairFile, see runPairWise)
+	& column 1 represents target of interest (enforced in workflow by suppling pairFile, see runPairWise)
+	& organizing by target feature name which is the full entry of column 1.
+	& assumes pairwise output can fit in np array
+
+	returns a list of top scoring pairs (nTopPairs) for each data source
+	"""
+	pw = np.loadtxt(pwPath,dtype=str,delimiter='\t')
+	# get data sources
+	n,m = pw.shape
+	features = pw[:,1] 
+	# get all data sources
+	uniqueFeatures = list(set(features))
+	# save top pairs
+	topPairsList = []
+	# prepare to write report 
+	with open(repPath,'w') as rep:
+		rep.write('Suammary output file for pairwise analysis run: '+ time.strftime("%c")+'.\n')
+		rep.write('Organized by target feature names found in ** **.\n')
+		rep.write('Informative log should be in same directory.\n')
+		rep.write('Showing results for pairs with log_10(FDR Q)>'+str(minLogQ)+'.\n')
+		# write each section 1 by 1
+		for feature in uniqueFeatures:
+			rep.write('\nResults for target feature: **'+feature+'**-\n')
+			
+			pwTmp = pw[features==feature]
+			p = np.array(pwTmp[:,5],dtype=str)
+			p = _replaceNANs(p)
+			p = 10.0**(-1*np.array(pwTmp[:,5],dtype=float))
+			_,q,_ = statsUtil.fdr_bh(p)
+			q = -1*np.log10(q)
+			
+			if np.any(q>minLogQ):
+				# filter if too low
+				pwTmp = pwTmp[q>minLogQ]
+				q = q[q>minLogQ]
+				# sort
+				ind = np.argsort(q)
+				pwTmp = pwTmp[ind[-1::-1]]
+				q = q[ind[-1::-1]]
+
+				nSig = len(pwTmp)
+				rep.write(str(nSig) + ' significant hits found:\n')
+
+				# print individual results:
+				rep.write('\tFName_1\tFName_2\tRho\tlog_10(p)\tlog_10(FDR Q)\n')
+				for i in range(nSig):
+					line = pwTmp[i]
+					rep.write('\t'+line[0]+'\t'+line[1]+'\t'+line[3]+'\t'+line[5]+'\t'+str(q[i])+'\n')
+					# record top pairs
+					if i < nTopPairs:
+						topPairsList.append([line[0],line[1]])
+
+			else:
+				rep.write('\t------None > min log(q)--------\n')
+	return(topPairsList)
+
+
 def writePWSumLong(pwPath, repPath, minLogQ=2.0,nTopPairs=2):
 	"""Takes the pairwise output at pwPath 
 	and parses it into a summary report at repPath
@@ -318,6 +385,7 @@ def writePWSumLong(pwPath, repPath, minLogQ=2.0,nTopPairs=2):
 	# prepare to write report 
 	with open(repPath,'w') as rep:
 		rep.write('Suammary output file for pairwise analysis run: '+ time.strftime("%c")+'.\n')
+		rep.write('Organized by data sources found in ** **.\n')
 		rep.write('Informative log should be in same directory.\n')
 		rep.write('Showing results for pairs with log_10(FDR Q)>'+str(minLogQ)+'.\n')
 		# write each section 1 by 1
@@ -347,12 +415,59 @@ def writePWSumLong(pwPath, repPath, minLogQ=2.0,nTopPairs=2):
 						topPairsList.append([line[0],line[1]])
 
 			else:
-				rep.write('\t------None > min log(p)--------\n')
+				rep.write('\t------None > min log(q)--------\n')
 	return(topPairsList)
 	
 
+def _run2FMPW(FM1Path,FM2Path,pwOutPath,pwRepPath,outDir,pwWhich,samples=[],minLogQ=2.0,nTopPairs=2):
+	"""Run pairwise between two exisitng FMs, creates tmp files in outDir
+	then removes them. PW output saved to pwOutPath. 
+	Summary created via writePWSumLongSepTar and saved to pwRepPath
+	Note: if samples not indicated uses samples in FM1, 
+	will look for these labels in FM2 (ordernot need to 
+	be exact and misisng labels will be set as nan).
+	"""
+	FM1 = open(FM1Path)
+	if len(samples)==0:
+		# get sample names
+		samples = FM1.next().strip().split('\t')[1:]
+	else: FM1.next()
 
-def _runSmallPW(outDir,outName,pairType,pwWhich,fmPath):
+	# get feature names for test list
+	testF = [line.strip().split('\t')[0] for line in FM1]
+	FM1.close()
+	# get feature names for target list
+	FM2 = open(FM2Path)
+	FM2.next()
+	targF = [line.strip().split('\t')[0] for line in FM2]
+	FM2.close()
+
+	# create pair list file for pw
+	pairListPath = outDir+'/tmpPairList_'+str(random.randrange(16**5))+'.tsv'
+	_mkPairFile(testF,targF,pairListPath)
+
+	# join FMs for pairwise (could do it faster, but this has mulitple checks
+	FMTmpPath = outDir+'/tmpFM_'+str(random.randrange(16**5))+'.tsv'
+	catFM([FM1Path,FM2Path],samples,FMTmpPath,studyID='101',allowedSuffix=['FAM'])
+
+	runPairwise(FMTmpPath,outDir,pwOutPath,pwWhich=pwWhich,pairFile=pairListPath)
+
+
+	# create a summary and plots
+	#####NOTE: potential mem issue as this summary code loads the whole pw output as np file object!
+	topPairsList = writePWSumLongSepTar(pwOutPath, pwRepPath, minLogQ=minLogQ,nTopPairs=nTopPairs)
+	# plot top pairs
+	if len(topPairsList)>0:
+		genUtil.plotter(topPairsList,FMTmpPath,outDir=outDir)
+		logging.info("Plots of top scoring pairs saved in {}".format(outDir))
+
+	os.remove(pairListPath)
+	os.remove(FMTmpPath)
+
+	
+
+
+def _runPresetMetaPW(outDir,outName,pairType,pwWhich,fmPath,minLogQ=2.0,nTopPairs=2):
 	pairFile = outDir+'/pairwise_'+outName+'_pairList.dat'
 	mkPSPairFile(fmPath,pairFile,pairType=pairType)
 	logging.info("Pairwise tests to run indicated in {}.".format(pairFile))
@@ -362,13 +477,13 @@ def _runSmallPW(outDir,outName,pairType,pwWhich,fmPath):
 	runPairwise(fmPath,outDir,pwOutPath,pwWhich=pwWhich,pairFile=pairFile)
 	logging.info("Full pairwise output saved at {}.".format(pwOutPath))
 	pwSumPath = outDir+'/pairwise_'+outName+'_summary.dat'
-	topPairsList = writePWSumLong(pwOutPath,pwSumPath)
+	topPairsList = writePWSumLong(pwOutPath,pwSumPath,minLogQ=minLogQ,nTopPairs=nTopPairs)
 	logging.info("Summary of pairwise output saved at {}.".format(pwSumPath))
 	# plot top pairs
 	if len(topPairsList)>0:
 		prefix = 'pwPlot_'+outName
 		genUtil.plotter(topPairsList,fmPath,outDir=outDir,prefix=prefix)
-		logging.info("Plots of top scoreing pairs saved in {} with prefix {}_.".format(outDir,prefix))
+		logging.info("Plots of top scoring pairs saved in {} with prefix {}_.".format(outDir,prefix))
 
 	
 
@@ -434,6 +549,13 @@ def main():
 	logging.info("Standardizing to sample list in FM at {}.".format(fmSampPath))
 	samples = getPatientOrder(fmSampPath)
 
+	# get some parameters
+	# minimum Log Q counted on summary reports
+	minLogQ = float(config.get('genWF','minLogQ'))
+	# number of max hits to plot data for after summary reports
+	nTopPairs = int(config.get('genWF','nTopPairs'))
+
+
 
 	
 	#########--Get GNMC Data--########
@@ -468,6 +590,23 @@ def main():
 			gnmcFamMDFMOutPath = config.get('genWF','gnmcFamMDFMOutPath')
 			genUtil.indFM2FamFM(gnmcIndMDFMOutPath,gnmcFamMDFMOutPath,nbList,samples)
 			logging.info("Family based GNMC BATCH FM saved at {}.".format(gnmcFamMDFMOutPath))
+
+		# -Transform IND 2 FAM
+		indFMPathList = config.get('genWF','indFMPathList')
+		if not indFMPathList=='na':
+			logging.info("-Transform IND 2 FAM.")
+			# parse input paths 
+			indFMPathList = indFMPathList.split(',')
+			# parse output paths
+			famFMPathList = config.get('genWF','famFMPathList').split(',')
+			if len(indFMPathList)==len(famFMPathList):
+				for i in range(len(indFMPathList)):
+
+					logging.info("Transforming IND FM at {} to FAM FM at {}.".format(indFMPathList[i],famFMPathList[i]))
+					genUtil.indFM2FamFM(indFMPathList[i],famFMPathList[i],repNBListPath,samples)
+
+			else:
+				logging.warning('GNMC Transform IND 2 FAM NOT run as the FM in/out path lists are diffrent sizes.')
 
 
 
@@ -530,7 +669,7 @@ def main():
 			# get the list of tests
 			fmPath = config.get('genWF','batchCPFMPath')
 			pairType = 'batch'
-			_runSmallPW(outDir,outName,pairType,pwWhich,fmPath)
+			_runPresetMetaPW(outDir,outName,pairType,pwWhich,fmPath,minLogQ=minLogQ,nTopPairs=nTopPairs)
 
 			
 
@@ -542,7 +681,7 @@ def main():
 			# get the list of tests
 			fmPath = config.get('genWF','qCCPFMPath')
 			pairType = 'QC'
-			_runSmallPW(outDir,outName,pairType,pwWhich,fmPath)
+			_runPresetMetaPW(outDir,outName,pairType,pwWhich,fmPath,minLogQ=minLogQ,nTopPairs=nTopPairs)
 
 
 
@@ -555,9 +694,42 @@ def main():
 			# get the list of tests
 			fmPath = config.get('genWF','qCBatchFMPath')
 			pairType = 'QCBatch'
-			_runSmallPW(outDir,outName,pairType,pwWhich,fmPath)
+			_runPresetMetaPW(outDir,outName,pairType,pwWhich,fmPath,minLogQ=minLogQ,nTopPairs=nTopPairs)
 
 	# <--- metadata analysis
+
+	# 
+
+	###### --Run general pairwise 1-- ######
+	if config.getboolean('genWF','runGenPW1'): # general pairwise 1 --->
+		logging.info("--General PW 1--\n\tRunnin basic pairwise on FM pairs.")
+		# get the list of FMs
+		genPW1FMList = config.get('genWF','genPW1FMList').split(',')
+		# list of paired files must be even
+		if (len(genPW1FMList) % 2 == 0):
+			for i in range(0,len(genPW1FMList),2):
+				# get file name 
+				logging.info('-Running Pair '+str(i/2+1))
+				logging.info('Test features at '+genPW1FMList[i])
+				logging.info('Target features at '+genPW1FMList[i+1])
+				pwPath = outDir+'/genPW1_'
+				pwPath += genPW1FMList[i][genPW1FMList[i].rfind('/')+1:genPW1FMList[i].rfind('.')]
+				pwPath += '_vs_'
+				pwPath += genPW1FMList[i][genPW1FMList[i+1].rfind('/')+1:genPW1FMList[i+1].rfind('.')]
+				pwOutPath = pwPath+'_out.dat'
+				pwRepPath = pwPath+'_summary.dat'
+				# run the paired FM workflow
+				# NOTE: potential mem issue as the summary code in this wf loads the whole pw output as np file object!
+				logging.info('Output saved to '+pwOutPath)
+				logging.info("Summary of pairwise output saved at {}.".format(pwRepPath))
+				_run2FMPW(genPW1FMList[i],genPW1FMList[i+1],pwOutPath,pwRepPath,outDir,pwWhich,samples=samples,minLogQ=minLogQ,nTopPairs=nTopPairs)
+				
+
+
+		else:
+			logging.warning('General pairwise 1 NOT run as the FM list does not have complete pairs (odd number).')
+
+	# <---- general pairwise 1
 
 	logging.info("run completed.")
 	logging.info("")
