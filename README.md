@@ -40,6 +40,18 @@ Reading the source files (like the CG manifest).
 Soon to add:
 Reading VCF, collection of QC measures, handling of transcript data, running pairwise on VCF.
 
+####custWF.py
+Truthfully, this is a bit of a workaround.  
+We are using this file to house small workflows, or procedures, as methods
+that we do not wish to incorporate with genWF.
+This could be because they are prototypes, they are run 
+in parallel, perhaps on different servers, or too much time would 
+be required to merge into genWF.
+
+While it is a bit sloppy, and the whole structure of this code may need 
+to be revisited, this allows us to move forward with important, yet small
+analysis tasks without spending resources on redesigning the current code. 
+
 To Dos
 ---------------------
 Will improve the documentation in this file soon.
