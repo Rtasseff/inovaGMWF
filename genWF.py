@@ -1,21 +1,31 @@
-""" Methods for a standard feature matrix based workflow on INOVA
-Methods to create FMs out of source files
+""" Methods for a standard feature matrix based workflow for use in ISB-INOVA projects.
+Focus on creating a general, semi-automated, preprocessing and analysis workflow 
+for study 101, and for reuse on similar studies.
+
+- Methods to create FMs out of source files
 - Methods to merge FMs, check consistency and filter for stats purposes
 - Methods to run pairwise analysis and summarize results (currently for medium to small runs only, metadata)
 
+The goal was to organize all of the analysis workflow that 
+was validated on DF4 and reused on DF5 for study 101, while 
+allowing for more general use when possible. However, for 
+several reasons (including time constraints, prototyping, 
+procedures run in parallel, source data on different servers)
+we have limited this to only a subset of the analysis and preprocessing.
+Some procedure must be run directly from custWF and gnmcUtil or even 
+using by resources not included in this package.
+
+View the README for more information, including links to extended 
+documentation on the more complete workflow.
+
 Designed around study 101,
-Some limitations on this relate to primary phenotype being defined by NB 
-as in NB was PTB. For some sources data on all family members is available  
+Some limitations on this relate to primary phenotype being defined by family.
+as in NB of FAM was PTB. For some sources, data on all family members is available  
 but in others this is not true (PTB on NB only, molecular data on M only)
 so we have organized this around the family unit (suffix -FAM).  
-In cases with twins, only one is chosen as representative.  
-This avoids exact duplicated data (M molecular data)
-and near exact replicated data (similarity in genomes).  
-Basically to allow for the independence assumption of most analysis. 
+In cases with twins, only one is chosen as representative.   
 We note that this limitation is introduced for systematic analysis 
 of feature matrix like input data.
-Thus, allowable members = [NB, NB-A, NB-B, M, F] where all with same family ID 
-are mapped to FAM when appropriate based on a predefined list of representative newborns.  
 """
 
 import numpy as np
