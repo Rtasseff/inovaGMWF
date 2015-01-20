@@ -178,7 +178,6 @@ def catFM(fMNames,sampleIDs,foutPath,studyID='101',allowedSuffix=['FAM']):
 	fout = open(foutPath,'w')
 	fout.write('.\t'+'\t'.join(sampleIDs)+'\n')
 	for finName in fMNames:
-		print finName
 		with open(finName) as fin:
 			labels = np.array(fin.next().strip().split('\t')[1:],dtype='|S15')
 
