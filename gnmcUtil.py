@@ -223,17 +223,21 @@ def summQCRegionFM(qcRegionDir,qcRegionName,numQCRegions,outQCFMPath):
 	"""
 
 	for i in range(1,numQCRegions+1):
-		fm = np.loadtxt(qcRegionDir+'/'+qcRegionName+'_'+str(i)+'.fm',dtype=str,delimiter='\t')
-		samples_tmp = list(fm[0,1:])
-		features_tmp = list(fm[1:,0])
-		if i==1:
-			samples = samples_tmp
-			features = features_tmp
-			data = np.array(fm[1:,1:],dtype=float)
-		else:
-			if (features_tmp != features) or (samples_tmp != samples):
-				raise ValueError('FM labels not the same in '+qcRegionName+'_'+str(i)+'.fm when adding up QC FMs')
-			data += np.array(fm[1:,1:],dtype=float)
+		try:
+			fmName = qcRegionName+'_'+str(i)+'.fm'
+			fm = np.loadtxt(qcRegionDir+'/'+fmName,dtype=str,delimiter='\t')
+			samples_tmp = list(fm[0,1:])
+			features_tmp = list(fm[1:,0])
+			if i==1:
+				samples = samples_tmp
+				features = features_tmp
+				data = np.array(fm[1:,1:],dtype=float)
+			else:
+				if (features_tmp != features) or (samples_tmp != samples):
+					raise ValueError('FM labels not the same in '+qcRegionName+'_'+str(i)+'.fm when adding up QC FMs')
+				data += np.array(fm[1:,1:],dtype=float)
+		except:
+			warnings.warn("Could not add QC region. File not found: "+fmName)
 		
 	genUtil.saveFM(data,outQCFMPath,features,samples)
 
@@ -483,28 +487,28 @@ def main():
 #	getQCFM_VCF(vcfPath,fmOutPath)
 #	# <-
 
-#	# -addup QC regions ->
-#	# done seperatly 
-#	# loops though all regions to sum up a single FM
-#	# for QC variables, assumes that all files are 
-#	# in the same dir with <qcRegionName>_i.fm 
-#	# where i = 1,2...,numQCRegions
-#	qcRegionDir = sys.argv[1]
-#	qcRegionName = sys.argv[2]
-#	numQCRegions = sys.argv[3]
-#	outQCFMPath = sys.argv[4]
-#	summQCRegionFM(qcRegionDir,qcRegionName,numQCRegions,outQCFMPath)
-#	# <-
+	# -addup QC regions ->
+	# done seperatly 
+	# loops though all regions to sum up a single FM
+	# for QC variables, assumes that all files are 
+	# in the same dir with <qcRegionName>_i.fm 
+	# where i = 1,2...,numQCRegions
+	qcRegionDir = sys.argv[1]
+	qcRegionName = sys.argv[2]
+	numQCRegions = int(sys.argv[3])
+	outQCFMPath = sys.argv[4]
+	summQCRegionFM(qcRegionDir,qcRegionName,numQCRegions,outQCFMPath)
+	# <-
 
 
-	
-	# --Feature Matrix for transcript level data
-	# running on 1 core on SGI for 61K regions requiered 13.5 hours
-	regionManifestPath='/isb/rtasseff/data/transcripts_20141125/transcriptManifest_20141125.dat'
-	sampleIDPath='/isb/rtasseff/data/transcripts_20141125/sampIDList_ITMI_VCF_DF5.tsv'
-	outFMPath='/isb/rtasseff/data/transcripts_20141125/data_GNMC_Trans_IND_20141223.fm'
-	mkRegionFM(regionManifestPath,sampleIDPath,outFMPath,fBaseName='N:GNMC:data',miAFrac=.49,maxMiss=.2)
-
+#	
+#	# --Feature Matrix for transcript level data
+#	# running on 1 core on SGI for 61K regions requiered 13.5 hours
+#	regionManifestPath='/isb/rtasseff/data/transcripts_20141125/transcriptManifest_20141125.dat'
+#	sampleIDPath='/isb/rtasseff/data/transcripts_20141125/sampIDList_ITMI_VCF_DF5.tsv'
+#	outFMPath='/isb/rtasseff/data/transcripts_20141125/data_GNMC_Trans_IND_20141223.fm'
+#	mkRegionFM(regionManifestPath,sampleIDPath,outFMPath,fBaseName='N:GNMC:data',miAFrac=.49,maxMiss=.2)
+#
 
 if __name__ == '__main__':
 	main()

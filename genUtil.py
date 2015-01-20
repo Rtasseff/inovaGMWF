@@ -278,8 +278,8 @@ def indFM2FamFM(indFMPath,famFMPath,nbList,famSample):
 	# get the samples
 	line = indFM.next()
 	indSampleList = np.array(line.strip().split('\t')[1:],dtype=str)
-	# make an index of the individual samples:
-	indSampleInd = np.arange(len(indSampleList),dtype=int)
+	# make an index of the individual samples for latter reference:
+	indSampleIndex = np.arange(len(indSampleList),dtype=int)
 
 	# find out format of individual sample IDs:
 	indSampIDType = idListType(indSampleList)
@@ -296,34 +296,47 @@ def indFM2FamFM(indFMPath,famFMPath,nbList,famSample):
 
 	# create temporary data matrix to hold set of family features
 	famData = np.array((np.zeros(len(famSample)) + np.nan),dtype='|S15')
+	# preallocate space for the ind data, be sure to include 1 extra spot at end for nan's to be referenced at
+	indData = np.array((np.zeros(len(indSampleList)+1) + np.nan),dtype='|S15')
+
+	# create a map, index of ind sample for each spot in FAM 
+	# allocate
+	fam2indSampleIndex = np.zeros((nMembers,len(famSample)),dtype=int)
+	# search
+	# loop through members
+	for i in range(nMembers):
+		member = members[i]
+		# loop though all family ids
+		for j in range(len(famSample)):
+			# get the sample id
+			indSampID = mapFam2Ind(famSample[j],nbDic,member)
+			# convert this isb ID to correct format for comparison to individual ids
+			if indSampIDType == 'itmi':indSampID = isbID2itmi(indSampID)
+			elif indSampIDType == 'cg':indSampID = isbID2cg(indSampID)
+			elif not indSampIDType == 'isb':raise RuntimeError ('RTE:0003 for some reason you are getting back an unknown sample id type indicator')
+
+			# find the corresponding index
+			if np.any(indSampID==indSampleList):
+				ind = indSampleIndex[indSampID==indSampleList][0]
+				fam2indSampleIndex[i,j] = ind
+			else:
+				# latter we will use this index as an 'nan'
+				fam2indSampleIndex[i,j] = len(famSample)
+				# warn if sample not found
+				warnings.warn("The individual sample "+indSampID+", corresponding to desired family sample, "+famSample[j]+", was not found.",UserWarning)  
+
+
+
+
 
 	# loop through individual matrix
-	first = True
 	for line in indFM:
 		tmp=line.strip().split('\t')
 		fname = tmp[0].split(':')
-		data = tmp[1:]
+		indData[:-1] = tmp[1:]
 		for i in range(nMembers):
 			member = members[i]
-			# loop though all family ids
-			for j in range(len(famSample)):
-				# get the sample id
-				indSampID = mapFam2Ind(famSample[j],nbDic,member)
-				# convert this isb ID to correct format for comparison to individual ids
-				if indSampIDType == 'itmi':indSampID = isbID2itmi(indSampID)
-				elif indSampIDType == 'cg':indSampID = isbID2cg(indSampID)
-				elif not indSampIDType == 'isb':raise RuntimeError ('RTE:0003 for some reason you are getting back an unknown sample id type indicator')
-
-				# find the corresponding index
-				if np.any(indSampID==indSampleList):
-					ind = indSampleInd[indSampID==indSampleList][0]
-					famData[j] = data[ind]
-				else:
-					famData[j] = 'nan'
-					# warn if sample not found
-					if first:
-						warnings.warn("The individual sample "+indSampID+", corresponding to desired family sample, "+famSample[j]+", was not found.",UserWarning)  
-			first = False
+			famData = indData[fam2indSampleIndex[i]]
 			# now we have the data time to write:
 			# feature name
 			famFM.write(fname[0]+':'+member+':'+':'.join(fname[1:]))
@@ -394,7 +407,7 @@ def plotter(pairList,fmPath,outDir='.',prefix='pwPlot'):
 		try:
 			statsUtil.plotPairwise(x,y,outfile=outfile,varType=['',''],varName=['',''])
 		except ValueError as ve:
-			logging.warning("Could not create the top scoring pairwise figure {}.\n\t Value error occurred:\n\t{}".format(outfile,ve))
+			warnings.warn("Could not create the top scoring pairwise figure {}.\n\t Value error occurred:\n\t{}".format(outfile,ve))
 			print outfile
 			print ve
 			

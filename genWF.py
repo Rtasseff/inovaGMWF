@@ -62,13 +62,6 @@ def getPatientOrder(fmPath,studyID='101',allowedSuffix=['FAM']):
 
 
 
-
-
-	
-
-
-
-
 def _catOrderedFM(filenames,outfile,skipHeader=True):
 	for fname in filenames:
 		with open(fname) as infile:
@@ -133,6 +126,24 @@ def filterFM(fmInPath,fmOutPath,maxMiss=.9,minObs=5):
 					skip = True
 					logging.warning('removing '+':'.join(fname)+', not enough samples for a group.')
 					break
+		if fname[0]=='N':
+			values = statsUtil._getFloat(np.array(tmp[1:],dtype=str))
+			uniqueValues = list(set(values[~np.isnan(values)]))
+			if len(uniqueValues)==2:
+				newValues = np.array(np.zeros(len(values))*np.nan,dtype=str)
+				fname[0] = 'B'
+				newValues[values==uniqueValues[0]]='0'
+				newValues[values==uniqueValues[1]]='1'
+				tmp[1:] = newValues[:]
+
+			elif np.all(values[~np.isnan(values)] > -1E-52) and np.median(values[~np.isnan(values)]) < 1E-52:
+				# if the matrix is mostly zeros change it to binary, zero or else
+				fname[0] = 'B'
+				newValues = np.array(np.zeros(len(values))*np.nan,dtype=str)
+				newValues[values > 1E-52] = '1'
+				newValues[values < 1E-52] = '0'
+				tmp[1:] = newValues[:]
+			
 
 		if not skip:
 			fout.write(':'.join(fname)+'\t'+'\t'.join(tmp[1:])+'\n')
@@ -157,6 +168,7 @@ def catFM(fMNames,sampleIDs,foutPath,studyID='101',allowedSuffix=['FAM']):
 	fout = open(foutPath,'w')
 	fout.write('.\t'+'\t'.join(sampleIDs)+'\n')
 	for finName in fMNames:
+		print finName
 		with open(finName) as fin:
 			labels = np.array(fin.next().strip().split('\t')[1:],dtype='|S15')
 
@@ -267,7 +279,7 @@ def mkPSPairFile(fmPath,foutPath,pairType='batch'):
 
 			
 
-def runPairwise(fMPath,outDir,outPath,pwWhich='/titan/cancerregulome8/TCGA/scripts/pairwise-2.0.0-current',pairFile=''):
+def runPairwise(fMPath,outDir,outPath,pwWhich='/titan/cancerregulome8/TCGA/scripts/pairwise-2.0.0-current',pairFile='',fdrFilter=''):
 	"""Run the pairwise code found at pwWhich on feature matrix at
 	fMName and save the output to outName.
 	"""
@@ -276,6 +288,11 @@ def runPairwise(fMPath,outDir,outPath,pwWhich='/titan/cancerregulome8/TCGA/scrip
 	# check to see if we have a file to indicate the pairs to calculate
 	if pairFile!='':
 		call = call+' --by-name '+pairFile
+
+	# check to see if we have a setting for fdr filtered output
+	if fdrFilter!='':
+		call = call+' -q '+str(fdrFilter)
+
 
 	call = call +' '+fMPath+' '+outPath
 	# redirecting output to an info file
@@ -583,13 +600,35 @@ def main():
 			# parse the manifest file for gnmc batch info
 			manPath =  config.get('genWF','manPath')
 			logging.info("Using CG manifest at {}.".format(manPath))
-			gnmcIndMDFMOutPath = config.get('genWF','gnmcIndMDFMOutPath') 
-			gnmcUtil.parseMkGenomeBatchFM(manPath,gnmcIndMDFMOutPath,indSampList)
-			logging.info("Individual GNMC BATCH FM saved at {}.".format(gnmcIndMDFMOutPath))
+			gnmcIndBatchFMOutPath = config.get('genWF','gnmcIndBatchFMOutPath') 
+			gnmcUtil.parseMkGenomeBatchFM(manPath,gnmcIndBatchFMOutPath,indSampList)
+			logging.info("Individual GNMC BATCH FM saved at {}.".format(gnmcIndBatchFMOutPath))
 			# move to family based FM
-			gnmcFamMDFMOutPath = config.get('genWF','gnmcFamMDFMOutPath')
-			genUtil.indFM2FamFM(gnmcIndMDFMOutPath,gnmcFamMDFMOutPath,nbList,samples)
-			logging.info("Family based GNMC BATCH FM saved at {}.".format(gnmcFamMDFMOutPath))
+			gnmcFamBatchFMOutPath = config.get('genWF','gnmcFamBatchFMOutPath')
+			genUtil.indFM2FamFM(gnmcIndBatchFMOutPath,gnmcFamBatchFMOutPath,nbList,samples)
+			logging.info("Family based GNMC BATCH FM saved at {}.".format(gnmcFamBatchFMOutPath))
+
+		# -QC-
+
+		if config.getboolean('genWF','runGetGNMCQC'):
+			logging.info("-Transforming GNMC QC FM-.")  
+			# get the IND FM path:
+			gnmcIndQCFMInPath =  config.get('genWF','gnmcIndQCFMInPath')
+			# get the ouput FAM FM
+			gnmcFamQCFMOutPath =  config.get('genWF','gnmcFamQCFMOutPath')
+			genUtil.indFM2FamFM(gnmcIndQCFMInPath,gnmcFamQCFMOutPath,repNBListPath,samples)
+			logging.info("The IND QC FM ("+gnmcIndQCFMInPath+") has been transformed to FAM format ("+gnmcFamQCFMOutPath+").")
+
+		# -meta merge-
+
+		if config.getboolean('genWF','runGetGNMCMeta'):
+			logging.info("-Merge GNMC metadata-.")  
+			# get the out FM path:
+			gnmcMDFMOutPath =  config.get('genWF','gnmcMDFMOutPath')
+			# merge them
+			catFM([gnmcFamBatchFMOutPath,gnmcFamQCFMOutPath],samples,gnmcMDFMOutPath,studyID='101',allowedSuffix=['FAM'])
+
+
 
 		# -Transform IND 2 FAM
 		indFMPathList = config.get('genWF','indFMPathList')
@@ -599,14 +638,22 @@ def main():
 			indFMPathList = indFMPathList.split(',')
 			# parse output paths
 			famFMPathList = config.get('genWF','famFMPathList').split(',')
-			if len(indFMPathList)==len(famFMPathList):
+			# parse filtered outputs
+			filterFMPathList = config.get('genWF','filterFMPathList').split(',')
+			if (len(indFMPathList)==len(famFMPathList)) and (len(indFMPathList)==len(filterFMPathList)):
 				for i in range(len(indFMPathList)):
 
 					logging.info("Transforming IND FM at {} to FAM FM at {}.".format(indFMPathList[i],famFMPathList[i]))
 					genUtil.indFM2FamFM(indFMPathList[i],famFMPathList[i],repNBListPath,samples)
 
+					if not filterFMPathList[i]=='na':
+						logging.info("Filtering FAM FM for basic statistical tests.")
+						filterFM(famFMPathList[i],filterFMPathList[i],minObs=0)
+						logging.info("Filtered FM at {} and saved to {}.".format(famFMPathList[i],filterFMPathList[i]))
+
+
 			else:
-				logging.warning('GNMC Transform IND 2 FAM NOT run as the FM in/out path lists are diffrent sizes.')
+				logging.warning('GNMC Transform IND 2 FAM NOT run as the FM in/out/filter path lists are diffrent sizes.')
 
 
 
@@ -715,7 +762,7 @@ def main():
 				pwPath = outDir+'/genPW1_'
 				pwPath += genPW1FMList[i][genPW1FMList[i].rfind('/')+1:genPW1FMList[i].rfind('.')]
 				pwPath += '_vs_'
-				pwPath += genPW1FMList[i][genPW1FMList[i+1].rfind('/')+1:genPW1FMList[i+1].rfind('.')]
+				pwPath += genPW1FMList[i+1][genPW1FMList[i+1].rfind('/')+1:genPW1FMList[i+1].rfind('.')]
 				pwOutPath = pwPath+'_out.dat'
 				pwRepPath = pwPath+'_summary.dat'
 				# run the paired FM workflow

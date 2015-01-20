@@ -122,7 +122,8 @@ def cat2int(y):
 	values of numbers from 0 to n-1
 	returns the new int array and list of cat labels.
 		a list of categories corresponding to int value
-	nan values (either 'nan' or the np object) will be preserved.
+	nan values (either 'nan' or the np object) will be preserved;
+	however int arrays cannot have nan so preserved as -1.
 	input array y must be an np array for indexing reasons.
 
 	as of now integers cannot have nan values, setting this to -1
@@ -136,12 +137,12 @@ def cat2int(y):
 		missing=False
 		if type(tmp)==np.string_:
 			if tmp in nanValues:missing=True
+			yNew[y==unique[i]] = -1
 		else: 
 			if np.isnan(tmp): missing=True
+			yNew[np.isnan(y)] = -1
 
-		if missing:
-			yNew[y==unique[i]] = -1
-		else:
+		if not missing:
 			yNew[y==unique[i]] = count
 			count += 1
 			cats.append(unique[i])
@@ -284,7 +285,8 @@ def _getFloat(x):
 	"""Create a float of this string"""
 	if x.dtype==np.dtype('float64'):xFloat = x
 	else:
-		xFloat = x.copy()
+		# had issues with S2 dtypes cutting off the nan to na
+		xFloat = np.array(x,dtype='|S15')
 		for i in range(len(xFloat)):
 			if xFloat[i] in nanValues:
 				xFloat[i] = 'nan'
