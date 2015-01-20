@@ -22,6 +22,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import warnings
+from scipy.stats import rankdata
 
 
 nanValues = ['NA','NaN','na','nan']
@@ -194,8 +195,10 @@ def plotPairwise(x,y,varType=['',''],varName=['',''],outfile=''):
 		keep[np.isnan(xFloat)]=False
 		keep[np.isnan(yFloat)]=False
 		# non parametric tests used so lets consider ranks
-		xRank = np.argsort(np.argsort(xFloat[keep]))
-		yRank = np.argsort(np.argsort(yFloat[keep]))
+		xRank = rankdata(xFloat[keep])
+		yRank = rankdata(yFloat[keep])
+		#xRank = np.argsort(np.argsort(xFloat[keep]))
+		#yRank = np.argsort(np.argsort(yFloat[keep]))
 
 		plt.plot(xRank,yRank,'o',label='Data')
 		try:
