@@ -9,7 +9,7 @@ import os
 import random
 
 PWPATH = '/titan/cancerregulome8/TCGA/scripts/pairwise-2.0.0-current'
-MAXQ = .000001
+MAXQ = .9
 
 def run2FMPWwList(FM1Path,FM2Path,pwOutPath,outDir,pwWhich=PWPATH,samples=[],maxQ=MAXQ,testFListPath=''):
 	"""Run pairwise between two existing FMs.
@@ -68,11 +68,11 @@ def run2FMPWwList(FM1Path,FM2Path,pwOutPath,outDir,pwWhich=PWPATH,samples=[],max
 
 
 def main():
-	outDir = '/users/rtasseff/inova/inovaMWF/test/test_20150120'
-	testFMPath = '/titan/ITMI1/projects/gamcop/data/featureMatrices/data_CLIN_Critical_Phenotype_20141120.fm'
-	targFMPath = '/titan/ITMI1/projects/gamcop/data/featureMatrices/data_CLIN_Critical_Phenotype_20141120.fm'
-	fullOutPath = '/users/rtasseff/inova/inovaMWF/test/test_20150120/fullOut.dat'
-	listOutPath = '/users/rtasseff/inova/inovaMWF/test/test_20150120/testList.dat'
+	outDir = '/isb/rtasseff'
+	testFMPath = '/isb/rtasseff/tmp.fm'
+	targFMPath = '/isb/rtasseff/tmp.fm'
+	fullOutPath = '/isb/rtasseff/fullOut.dat'
+	listOutPath = '/isb/rtasseff/testList.dat'
 
 	run2FMPWwList(testFMPath,targFMPath,fullOutPath,outDir,pwWhich=PWPATH,maxQ=MAXQ,testFListPath=listOutPath)		
 
