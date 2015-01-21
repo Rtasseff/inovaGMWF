@@ -8,26 +8,37 @@ import sys
 import os
 import random
 
-PWPATH = '/titan/cancerregulome8/TCGA/scripts/pairwise-2.0.0-current'
-MAXQ = .9
+PWPATH_TITAN = '/titan/cancerregulome8/TCGA/scripts/pairwise-2.0.0-current'
+PWPATH_SGI = '/isb/rkramer/bin/pairwise-2.0.1'
+MAXQ = .1
 
-def run2FMPWwList(FM1Path,FM2Path,pwOutPath,outDir,pwWhich=PWPATH,samples=[],maxQ=MAXQ,testFListPath=''):
+def run2FMPWwList(FM1Path,FM2Path,pwOutPath,outDir,pwWhich=PWPATH_SGI,samples='',maxQ=MAXQ,testFListPath=''):
 	"""Run pairwise between two existing FMs.
 	FM1 and FM2 considered test and target features, respectively.
 	Procedure creates tmp files in outDir then removes them. 
 	PW output saved to pwOutPath. 
 	Output is filtered by FDR q values with a max set in maxQ.
 	Uses PW code at pwWhich.
-	samples is a str list of sample ids to test on,
-	if empty uses list in FM1.	
+	If samples == '', use FM1 header row to define sample list,
+	else if samples is a path, load a tsv sample list from that path,
+	otherwise samples must be a str list containing the sample ids.
 	If specified a new line separated list of test features below 
 	maxQ will be saved at testFListPath.
 	"""
+
 	FM1 = open(FM1Path)
-	if len(samples)==0:
-		# get sample names
+	if samples=='':
+		#samples must be taken from the FM
 		samples = FM1.next().strip().split('\t')[1:]
-	else: FM1.next()
+	else: 
+		# need to advacne the FM since header not used
+		FM1.next()
+		# something was passed, what is it
+		if type(samples)==str:
+			# must be a path
+			samples = np.loadtxt(samples,dtype=str,delimiter='\t')
+		# if not a str, must be some kind of list or np array (otherwise an error will be throw later
+		
 
 	# get feature names for test list
 	testF = [line.strip().split('\t')[0] for line in FM1]
@@ -44,7 +55,7 @@ def run2FMPWwList(FM1Path,FM2Path,pwOutPath,outDir,pwWhich=PWPATH,samples=[],max
 
 	# join FMs for pairwise (could do it faster, but this has mulitple checks
 	FMTmpPath = outDir+'/tmpFM_'+str(random.randrange(16**5))+'.tsv'
-	genWF.catFM([FM1Path,FM2Path],samples,FMTmpPath,studyID='101',allowedSuffix=['FAM'])
+	genWF.catFM([FM1Path,FM2Path],samples,FMTmpPath,checkSampIDs=False)
 
 	genWF.runPairwise(FMTmpPath,outDir,pwOutPath,pwWhich=pwWhich,pairFile=pairListPath,fdrFilter=maxQ)
 
@@ -68,13 +79,14 @@ def run2FMPWwList(FM1Path,FM2Path,pwOutPath,outDir,pwWhich=PWPATH,samples=[],max
 
 
 def main():
-	outDir = '/isb/rtasseff'
-	testFMPath = '/isb/rtasseff/tmp.fm'
-	targFMPath = '/isb/rtasseff/tmp.fm'
-	fullOutPath = '/isb/rtasseff/fullOut.dat'
-	listOutPath = '/isb/rtasseff/testList.dat'
+	outDir = '/isb/rtasseff/results/var_batch_20150121'
+	testFMPath = '/isb/rtasseff/data/featureMatrices/DF5_MergedVCF_ForPairwise_ExcludingPO.fm'
+	targFMPath = '/isb/rtasseff/data/featureMatrices/BATCH_GNMC_IND_20150109.fm'
+	fullOutPath = '/isb/rtasseff/results/var_batch_20150121/fullOut.dat'
+	listOutPath = '/isb/rtasseff/results/var_batch_20150121/var_batchFilter_featureNameList_20150121.dat'
+	samplePath = '/isb/rtasseff/data/support/sampleIDList_ind_DF5_itmiFormat.dat'
 
-	run2FMPWwList(testFMPath,targFMPath,fullOutPath,outDir,pwWhich=PWPATH,maxQ=MAXQ,testFListPath=listOutPath)		
+	run2FMPWwList(testFMPath,targFMPath,fullOutPath,outDir,maxQ=MAXQ,testFListPath=listOutPath,samples=samplePath)		
 
 if __name__ == '__main__':
 	main()
