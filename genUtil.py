@@ -148,6 +148,81 @@ def idListType(smapIDList):
 
 	return sampIDType
 
+def convIDType(inID,outIDType,inIDType=''):
+	"""Convert the sample id, inID, of type inIDType 
+	to the outIDType, return new str id.
+	If inIDType blank, detect automatically
+	allowable types: 'isb', 'itmi', 'cg'.
+	"""
+	if inIDType=='':
+		_inIDType = idType(inID)
+		if type(_inIDType)==list:_inIDType=_inIDType[0]
+	else: _inIDType=inIDType
+
+	if _inIDType=='isb':
+		if outIDType=='cg':
+			outID = isbID2cg(inID)
+		elif outIDType=='itmi':
+			outID = isbID2itmi(inID)
+		else:
+			raise ValueError('ERR0021: output id type, '+ outIDType+', not recognized.')	
+	elif _inIDType=='itmi':
+		if outIDType=='isb':
+			outID = itmiID2isb(inID)
+		elif outIDType=='cg':
+			raise ValueError('ERR0023: conversion from cg to itmi not implemented.')
+
+		else:
+			raise ValueError('ERR0022: output id type, '+ outIDType+', not recognized.')
+	elif _inIDType=='cg':
+		if outIDType=='itmi':
+			outID = cgID2itmi(inID)
+		elif outIDType=='isb':
+			outID = cgID2isb(inID)
+		else:
+			raise ValueError('ERR0024: output id type, '+ outIDType+', not recognized.')
+	else:
+		raise ValueError('ERR0020: input id type, '+ _inIDType+', not recognized for sample: '+inID)
+	return(outID)
+
+def nb2indList(nbList,outIDType='isb'):
+	"""Create a list of individual sample ids
+	that corresponds with the new born list (str list nbList).
+	The format, or id type for the sample ids is 
+	specified by outIDType.
+	Return str list of sample ids
+	"""
+	# get the type of ids
+	inIDType = idListType(nbList)
+	# if degenerative can choose any 
+	if type(inIDType)==list:inIDType=inIDType[0]
+	# if na we have issue 
+	if inIDType == 'na':
+		raise ValueError('ERR0025: input id type derived from list is not recognized.')
+
+	# lets always start with ISB format:
+	if inIDType=='isb':
+		_nbList = nbList
+	else:
+		_nbList = []
+		for value in nbList:
+			_nbList.append(convIDType(value,'isb',inIDType=inIDType))
+	# create individual list F M and NB
+	indList = []
+	for value in _nbList:
+		tmp = value.split('-')
+		# new born
+		indList.append(value)
+		# mother
+		indList.append(tmp[0]+'-'+tmp[1]+'-M')
+		# father
+		indList.append(tmp[0]+'-'+tmp[1]+'-F')
+	# convert if needed
+	if outIDType!='isb':
+		for i in range(len(indList)):
+			indList[i] = convIDType(indList[i],outIDType,inIDType='isb')
+
+	return(indList)
 
 def mkNBDict(nbList):
 	"""Make a dictionary of family ids linked to 
