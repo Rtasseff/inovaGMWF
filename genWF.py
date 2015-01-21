@@ -48,26 +48,61 @@ nanValues = ['NA','NaN','na','nan']
 disc="python workflow for standard genomic/molecular data analysis, INOVA 101."
 version='0.1.0'
 
-def _checkPatientID(patientID,studyID='101',allowedSuffix=['FAM']):
-	"""Check that ID is consistent with expectations"""
-	tmp = patientID.split('-')
+def checkPatientID(patientID,checkOpt={}):
+	"""Check that ID is consistent with expectations.
+	Check options are set in the dictionary checkOpt.
+	If no dictionary use defaults.
+	Checks the id type('allowedIDTypes', str list), 
+	if ok transforms to isb type to check:
+	the study id ('studyID', str)
+	the subject prefixes ('allowedSuffix', str list)
+	"""
+	if checkOpt.has_key('studyID'):studyID=checkOpt['checkOpt']
+	else:studyID='101'
+	if checkOpt.has_key('allowedSuffix'):allowedSuffix=checkOpt['allowedSuffix']
+	else:allowedSuffix=['FAM']
+	if checkOpt.has_key('allowedIDTypes'):allowedIDTypes=checkOpt['allowedIDTypes']
+	else:allowedIDTypes=['isb']
+
+	# get type 
+	inIDType = genUtil.idType(patientID)
+	# NOTE: not sure but choosing only the first may cause issues in checking?
+	# it will not miss an error, but may throw one without proper cause
+	if type(inIDType)==list:inIDType=inIDType[0]
+
+	if not allowedIDTypes[0]=='any':
+		# check this type
+		if inIDType not in allowedIDTypes: 
+			raise ValueError ("ERR:0004 unexpected sample id type "+inIDType+', for sample :'+patientID)
+	
+	if inIDType=='isb':_patientID = patientID
+	else: _patientID = genUtil.convIDType(patientID,'isb')
+
+		
+		
+
+	tmp = _patientID.split('-')
 	if tmp[0] != studyID:
-		raise ValueError ("ERR:0001 unexpected study id "+str(tmp[0]))
+		raise ValueError ("ERR:0001 unexpected study id "+str(tmp[0])+', for sample :'+patientID)
 	elif (not allowedSuffix[0]=='any') and ('-'.join(tmp[2:]) not in allowedSuffix): 
-		raise ValueError ("ERR:0002 unexpected member id "+'-'.join(tmp[2:])+'. Suffixes limited to '+str(allowedSuffix))
+		raise ValueError ("ERR:0002 unexpected member id "+'-'.join(tmp[2:])+', for sample :'+patientID+'. Suffixes limited to '+str(allowedSuffix))
 
 
-def getPatientOrder(fmPath,studyID='101',allowedSuffix=['FAM']):
+def getPatientOrder(fmPath,checkSampIDs=True,checkOpt={}):
 	"""Get the sample order from a properly formated, pre-existing
 	feature matrix.
+	if checkSampIDs, then the sample header of each FM will be 
+	inspected to ensure the IDs are as expected, see 
+	checkPatientID() for more info on options, checkOpt.
 
 	fmPath	str, path to standard feature matrix
 	"""
 	fin = open( fmPath )
 	line = fin.next() # first line is header with info
 	patients = line.strip().split('\t')[1:] # first position is '.' place holder
-	for patient in patients:
-		_checkPatientID(patient,studyID=studyID,allowedSuffix=allowedSuffix)	
+	if checkSampIDs:
+		for patient in patients:
+			checkPatientID(patient,checkOpt=checkOpt)	
 	return patients
 
 
@@ -166,7 +201,7 @@ def filterFM(fmInPath,fmOutPath,maxMiss=.9,minObs=5):
 
 
 
-def catFM(fMNames,sampleIDs,foutPath,studyID='101',allowedSuffix=['FAM']):
+def catFM(fMNames,sampleIDs,foutPath,checkSampIDs=True,checkOpt={}):
 	"""Concatenate multiple feature matrices together.
 	Assumes first line is header for sample labels,
 	and use sampleID to determine columns and their order.
@@ -174,6 +209,9 @@ def catFM(fMNames,sampleIDs,foutPath,studyID='101',allowedSuffix=['FAM']):
 	sample in sampleID but not in a FM header.
 	fMnames	list of str paths for feature matrices to be cat'ed
 	sampleIDs	list of str sample ids
+	if checkSampIDs, then the sample header of each FM will be 
+	inspected to ensure the IDs are as expected, see 
+	checkPatientID() for more info on options, checkOpt.
 	"""
 	fout = open(foutPath,'w')
 	fout.write('.\t'+'\t'.join(sampleIDs)+'\n')
@@ -182,16 +220,9 @@ def catFM(fMNames,sampleIDs,foutPath,studyID='101',allowedSuffix=['FAM']):
 			labels = np.array(fin.next().strip().split('\t')[1:],dtype='|S15')
 
 			# doing some checking here to see labels are as expected
-			for label in labels:
-				 _checkPatientID(label,studyID,allowedSuffix)
-
-# originally this was all hard coded to assume matrices were correct for 101, but not labled correctly
-#				tmp = labels[i].split('-')
-#				# some of the logic here has been hard coded
-#				# to assume study 101
-#				if tmp[0]!='101':
-#					ValueError('ERR:0010, In feature matrix at '+finName+', study ID is not 101. Please change source code for use with other studies')
-#				labels[i] = tmp[0]+'-'+tmp[1]+'-FAM' # by assumption, mapping all col to -FAM, hard coded for 101.
+			if checkSampIDs:
+				for label in labels:
+					checkPatientID(label,checkOpt=checkOpt)
 
 			for sampleID in sampleIDs:
 				if not np.any(sampleID==labels):
@@ -474,7 +505,8 @@ def _run2FMPW(FM1Path,FM2Path,pwOutPath,pwRepPath,outDir,pwWhich,samples=[],minL
 
 	# join FMs for pairwise (could do it faster, but this has mulitple checks
 	FMTmpPath = outDir+'/tmpFM_'+str(random.randrange(16**5))+'.tsv'
-	catFM([FM1Path,FM2Path],samples,FMTmpPath,studyID='101',allowedSuffix=['FAM'])
+	
+	catFM([FM1Path,FM2Path],samples,FMTmpPath)
 
 	runPairwise(FMTmpPath,outDir,pwOutPath,pwWhich=pwWhich,pairFile=pairListPath)
 
@@ -635,7 +667,7 @@ def main():
 			# get the out FM path:
 			gnmcMDFMOutPath =  config.get('genWF','gnmcMDFMOutPath')
 			# merge them
-			catFM([gnmcFamBatchFMOutPath,gnmcFamQCFMOutPath],samples,gnmcMDFMOutPath,studyID='101',allowedSuffix=['FAM'])
+			catFM([gnmcFamBatchFMOutPath,gnmcFamQCFMOutPath],samples,gnmcMDFMOutPath)
 
 
 
@@ -704,7 +736,7 @@ def main():
 
 			# cat matrices together
 			combMDFMOutPath = config.get('genWF','combMDFMOutPath')
-			catFM(metaFMs,samples,combMDFMOutPath,studyID='101')
+			catFM(metaFMs,samples,combMDFMOutPath)
 			logging.info("Metadata stored in single FM at {}.".format(combMDFMOutPath))
 
 		# filter for pairwise
