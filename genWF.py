@@ -41,6 +41,7 @@ import os
 import genUtil
 import gnmcUtil
 import random
+import warnings
 
 floatFmtStr = '%05.4E'
 nanValues = ['NA','NaN','na','nan']
@@ -57,7 +58,7 @@ def checkPatientID(patientID,checkOpt={}):
 	the study id ('studyID', str)
 	the subject prefixes ('allowedSuffix', str list)
 	"""
-	if checkOpt.has_key('studyID'):studyID=checkOpt['checkOpt']
+	if checkOpt.has_key('studyID'):studyID=checkOpt['studyID']
 	else:studyID='101'
 	if checkOpt.has_key('allowedSuffix'):allowedSuffix=checkOpt['allowedSuffix']
 	else:allowedSuffix=['FAM']
@@ -88,22 +89,125 @@ def checkPatientID(patientID,checkOpt={}):
 		raise ValueError ("ERR:0002 unexpected member id "+'-'.join(tmp[2:])+', for sample :'+patientID+'. Suffixes limited to '+str(allowedSuffix))
 
 
-def getPatientOrder(fmPath,checkSampIDs=True,checkOpt={}):
-	"""Get the sample order from a properly formated, pre-existing
-	feature matrix.
-	if checkSampIDs, then the sample header of each FM will be 
+def getPatientOrder(sampList,checkSampIDs=True,checkOpt={}):
+	"""Get the sample names and order from:
+	If sampList is a str assume a path and look for
+	a tsv or new line separated text file or 
+	a properly formated, pre-existing feature matrix header;
+	else, assume iterative and run check only.
+	if checkSampIDs, then the resulting or passed list will be 
 	inspected to ensure the IDs are as expected, see 
 	checkPatientID() for more info on options, checkOpt.
-
-	fmPath	str, path to standard feature matrix
 	"""
-	fin = open( fmPath )
-	line = fin.next() # first line is header with info
-	patients = line.strip().split('\t')[1:] # first position is '.' place holder
+	if type(sampList)==str:
+		# assume its a path to a file of names
+		fin = open( sampList )
+		firstLine = fin.next().strip().split('\t')
+		if len(firstLine) == 1:
+			# assume its a new line sep list
+			sampList = [firstLine[0]]
+			for line in fin: sampList.append(line.strip())
+		else: 
+			# could be FM or tsv list
+			try:
+				secondline = fin.next().strip().split('\t')
+				if len(secondline)!=len(firstLine):
+					raise ValueError('ERR:00020, multiline sample list input is not in recognized FM format')
+				# there is a second line, same size, assume FM
+				sampList = firstLine[1:]
+			except StopIteration:
+				# no second line, assume its a one line tsv list
+				sampList = firstLine
+		
 	if checkSampIDs:
-		for patient in patients:
-			checkPatientID(patient,checkOpt=checkOpt)	
-	return patients
+		for samp in sampList:
+			checkPatientID(samp,checkOpt=checkOpt)	
+	return sampList
+
+
+def clin2FamForm(curClinFMPath,newClinFMPath,newClinCPFMPath,sampList=''):
+	"""Some special formating of the original clinical FM 
+	is need for the gampcop 101 study.
+	We have dumped all that in here.
+	curClinFMPath is the actual path.
+	sampList is a list of samples to extract
+	from the curent FM.
+	sampList format see getPatientOrder
+	Note, sampList should be -FAM's
+	and curClin should be -NB's
+	for the gamcop 101 study.
+	"""
+
+	critP = ['1n2v4','1v4','TermCategory','Gestational_Age_at_Delivery','Preterm','History_of_Preterm_Birth','Placenta_Related,Prom_Related','Preeclampsia/Eclampsia','Incompetent_Shortened_Cervix','Uterine_Related','Hypertension_Related','Immune_Related','Inova_Idiopathic_NA']
+
+	curClinFM = open(curClinFMPath)
+	# get the sample order and check for NB tag tags as expected
+	checkOpt = {}
+	checkOpt['studyID'] = '101'
+	checkOpt['allowedSuffix'] = ['NB','NB-A','NB-B']
+	checkOpt['allowedIDTypes'] = ['isb']
+	# note uses first line of curClinFM
+	curSampList = getPatientOrder(curClinFM.next().strip().split('\t')[1:],checkOpt=checkOpt)
+	# change names to FAM based
+	for i in range(len(curSampList)):
+		tmp = curSampList[i].split('-')
+		curSampList[i] = tmp[0]+'-'+tmp[1]+'-FAM'
+
+	if sampList=='':
+		newSampList = curSampList
+	else:
+		# load/check new sample list
+		checkOpt['studyID'] = '101'
+		checkOpt['allowedSuffix'] = ['FAM']
+		checkOpt['allowedIDTypes'] = ['isb']
+		newSampList = getPatientOrder(sampList,checkOpt=checkOpt)
+
+	# get the index to  conform the current FM to new sampList
+	sampInd = genUtil.getSampA2OrderSampBInd(curSampList,newSampList)
+	
+
+	fout = open(newClinFMPath,'w')
+	fout2 = open(newClinCPFMPath,'w')
+
+	fout.write('.')
+	fout2.write('.')
+	
+	for sampID in newSampList:
+		fout.write('\t'+sampID)
+		fout2.write('\t'+sampID)
+	fout.write('\n')
+	fout2.write('\n')
+
+	# allocate before, it is faster
+	# an index of len(curSampList) will draw an nan
+	# constant with sampInd strategy for samples not in current FM 
+	data = np.array(np.zeros(len(curSampList)+1)+np.nan,dtype='|S15')
+
+
+	# note header line already used above
+	for line in curClinFM:
+		tmp = line.strip().split('\t')
+		fname = tmp[0].split(':')
+		# place data in existing np array for indexing 
+		data[:-1] = tmp[1:]
+
+		ftype = 'Data'
+		if fname[2] in critP:
+			ftype = 'Critical_Phenotype'
+		newFname = fname[0]+':'+fname[3]+':'+fname[1]+':'+ftype+':'+fname[2]
+		if fname[7]!='':
+			newFname = newFname+'_'+fname[7]
+		# write name and indexed data to file
+		fout.write(newFname+'\t'+'\t'.join(data[sampInd])+'\n')
+		if ftype == 'Critical_Phenotype':
+			fout2.write(newFname+'\t'+'\t'.join(data[sampInd])+'\n')
+		
+	fout.close()
+	fout2.close()
+	curClinFM.close()
+
+	
+
 
 
 
@@ -237,7 +341,7 @@ def catFM(fMNames,sampleIDs,foutPath,checkSampIDs=True,checkOpt={}):
 				data = np.array(data[1:],dtype=str)
 				if len(data)!=(len(labels)):
 					raise ValueError('ERR:0011, In feature matrix at '+finName+', the rows do not have equal lengths')
-				
+				raise ValueError ('######## change to ID mehtod and remove the np.array() call above')
 				for sampleID in sampleIDs:
 					if not np.any(sampleID==labels):fout.write('\tnan')
 					else:fout.write('\t'+data[sampleID==labels][0])
