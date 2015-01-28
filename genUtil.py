@@ -7,6 +7,7 @@ RAT 20141121
 """
 
 import warnings
+warnings.filterwarnings("always")
 
 import numpy as np
 import statsUtil 
