@@ -79,11 +79,11 @@ def run2FMPWwList(FM1Path,FM2Path,pwOutPath,outDir,pwWhich=PWPATH_SGI,samples=''
 
 
 def main():
-	outDir = '/isb/rtasseff/results/var_batch_20150121'
+	outDir = '/isb/rtasseff/results/var_batch_20150128'
 	testFMPath = '/isb/rtasseff/data/featureMatrices/DF5_MergedVCF_ForPairwise_ExcludingPO.fm'
 	targFMPath = '/isb/rtasseff/data/featureMatrices/BATCH_GNMC_IND_20150109.fm'
-	fullOutPath = '/isb/rtasseff/results/var_batch_20150121/fullOut.dat'
-	listOutPath = '/isb/rtasseff/results/var_batch_20150121/var_batchFilter_featureNameList_20150121.dat'
+	fullOutPath = outDir+'/fullOut.dat'
+	listOutPath = outDir+'/var_batchFilter_featureNameList_20150128.dat'
 	samplePath = '/isb/rtasseff/data/support/sampleIDList_ind_DF5_itmiFormat.dat'
 
 	run2FMPWwList(testFMPath,targFMPath,fullOutPath,outDir,maxQ=MAXQ,testFListPath=listOutPath,samples=samplePath)		
