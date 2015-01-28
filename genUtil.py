@@ -127,7 +127,7 @@ def idType(sampID):
 	elif tmp[0] in ['NB','M','F'] and len(tmp)==3:sampIDType = ['itmi','cg']
 	elif tmp[0]=='NB' and len(tmp)==4 and tmp[1] in ['A','B','C','D']:sampIDType ='cg'
 	elif len(tmp[0])>2 and tmp[0][:2] =='NB' and len(tmp)==3:sampIDType ='itmi'
-	elif tmp[-1] in ['NB','M','F'] and len(tmp)==3:sampIDType = 'isb'
+	elif tmp[-1] in ['NB','M','F','FAM'] and len(tmp)==3:sampIDType = 'isb'
 	elif tmp[-1] in ['A','B','C','D'] and len(tmp)==4:sampIDType = 'isb'
 	else: sampIDType = 'na'
 
@@ -315,6 +315,37 @@ def mapFam2Ind(famID,nbDic,member):
 	else: indID = 'na'
 	return(indID)
 
+def getSampA2OrderSampBInd(sampListA,sampListB):
+	"""To transform a feature matrix cohort 
+	with a sample list A to the sample list B
+	we need to return an indexing that transforms
+	the order of A to the order of B.
+	The index will be returned such that 
+	sampListA[sampA2BInd] = sampListB
+	Note values in B but not in A will be indexed 
+	by len(sampListA) so I suggest 
+	sampListAtmp = sampListA.append('nan')
+	so that sampListAtmp[sampA2BInd] will give 
+	'nan' values when mathcing sample not found
+	"""
+	sampAInd = np.arange(len(sampListA),dtype=int)
+	sampA2BInd = np.zeros(len(sampListB),dtype=int)
+	# need to index this guy 
+	_sampListA = np.array(sampListA,dtype=str)
+	for i in range(len(sampListB)):
+
+		if sampListB[i] in _sampListA:
+			ind = sampAInd[sampListB[i]==_sampListA][0]
+			sampA2BInd[i] = ind
+		else:
+			# latter we will use this index as an 'nan'
+			sampA2BInd[i] = len(_sampListA)
+			# warn if sample not found
+			warnings.warn("The desired sample, "+sampListB[i]+", was not found.",UserWarning)
+	return sampA2BInd
+	
+
+
 	
 
 def indFM2FamFM(indFMPath,famFMPath,nbList,famSample):
@@ -391,6 +422,7 @@ def indFM2FamFM(indFMPath,famFMPath,nbList,famSample):
 			elif not indSampIDType == 'isb':raise RuntimeError ('RTE:0003 for some reason you are getting back an unknown sample id type indicator')
 
 			# find the corresponding index
+			##### NOTE: we should change this indexing to be done by getSampA2OrderSampBInd above...
 			if np.any(indSampID==indSampleList):
 				ind = indSampleIndex[indSampID==indSampleList][0]
 				fam2indSampleIndex[i,j] = ind
