@@ -328,23 +328,34 @@ def catFM(fMNames,sampleIDs,foutPath,checkSampIDs=True,checkOpt={}):
 				for label in labels:
 					checkPatientID(label,checkOpt=checkOpt)
 
-			for sampleID in sampleIDs:
-				if not np.any(sampleID==labels):
-					logging.warning('WARN0002: sample ID '+sampleID+' not found in feature matrix at '+ finName)
-				if np.sum(sampleID==labels)>1:
-					logging.warning('WARN0003: sample ID '+sampleID+' had multiple entries in feature matrix at '+ finName+'. Using only the first.')
+			#for sampleID in sampleIDs:
+			#	if not np.any(sampleID==labels):
+			#		logging.warning('WARN0002: sample ID '+sampleID+' not found in feature matrix at '+ finName)
+			#	if np.sum(sampleID==labels)>1:
+			#		logging.warning('WARN0003: sample ID '+sampleID+' had multiple entries in feature matrix at '+ finName+'. Using only the first.')
+			# above is now done below, mostly...
+
+			# get index for reordering the columns 
+			logging.info('Reordering samples in '+ finName+' to conform to new sample list for merged FMs.')
+			# get the index to conform the current FM to new sampList, missing values will be indexed at len(labels)
+			sampInd = genUtil.getSampA2OrderSampBInd(labels,sampleIDs)
+
+			# allocate an np array now, its faster, note that missing values idexed to len(labels)
+			data = np.array(np.zeros(len(labels)+1)+np.nan,dtype='|S15')
 
 			# start appending data
 			for line in fin:
-				data = line.strip().split('\t')
-				fout.write(data[0])
-				data = np.array(data[1:],dtype=str)
-				if len(data)!=(len(labels)):
+				tmp = line.strip().split('\t')
+				if len(tmp[1:])!=(len(labels)):
 					raise ValueError('ERR:0011, In feature matrix at '+finName+', the rows do not have equal lengths')
-				raise ValueError ('######## change to ID mehtod and remove the np.array() call above')
-				for sampleID in sampleIDs:
-					if not np.any(sampleID==labels):fout.write('\tnan')
-					else:fout.write('\t'+data[sampleID==labels][0])
+
+				# place data in existing np array for indexing, leave end nan to be consitant with sampInd 
+				data[:-1] = tmp[1:]
+				fout.write(tmp[0]+'\t')
+				
+				
+				# write the data in the new order given by sampInd, refering missing to end
+				fout.write('\t'.join(data[sampInd]))
 				fout.write('\n')
 
 	fout.close()
