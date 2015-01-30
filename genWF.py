@@ -163,6 +163,7 @@ def clin2FamForm(curClinFMPath,newClinFMPath,newClinCPFMPath,sampList=''):
 		newSampList = getPatientOrder(sampList,checkOpt=checkOpt)
 
 	# get the index to  conform the current FM to new sampList
+	logging.info("Checking for existence and order of desired samples in "+curClinFMPath)
 	sampInd = genUtil.getSampA2OrderSampBInd(curSampList,newSampList)
 	
 
@@ -717,7 +718,7 @@ def main():
 	pwWhich = config.get('genWF','pwWhich')	
 
 	
-	# need the sample list 
+	# need the sample list
 	fmSampPath = config.get('genWF','fmSampPath')
 	logging.info("Standardizing to sample list in FM at {}.".format(fmSampPath))
 	samples = getPatientOrder(fmSampPath)
@@ -728,7 +729,14 @@ def main():
 	# number of max hits to plot data for after summary reports
 	nTopPairs = int(config.get('genWF','nTopPairs'))
 
-
+	#########--Format Clinical FM--#######
+	if config.getboolean('genWF','runFrmtClinFM'): # GNMC data ---->
+		logging.info("--Formating Clinical FM--\n\tRunning scripts to format data for GAMCOP 101 FAM based study.")
+		preClinFMPath = config.get('genWF','preClinFMPath')
+		outFullClinFMPath = config.get('genWF','outFullClinFMPath')
+		outCPClinFMPath = config.get('genWF','outCPClinFMPath')
+		clin2FamForm(preClinFMPath,outFullClinFMPath,outCPClinFMPath,sampList=samples)
+		logging.info("The clinical FM at "+preClinFMPath+" has been formated and saved to "+outFullClinFMPath+" (full) and "+outCPClinFMPath+" (critical phenotypes only).")
 
 	
 	#########--Get GNMC Data--########
