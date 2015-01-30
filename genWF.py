@@ -42,6 +42,7 @@ import genUtil
 import gnmcUtil
 import random
 import warnings
+import gzip
 
 floatFmtStr = '%05.4E'
 nanValues = ['NA','NaN','na','nan']
@@ -321,43 +322,46 @@ def catFM(fMNames,sampleIDs,foutPath,checkSampIDs=True,checkOpt={}):
 	fout = open(foutPath,'w')
 	fout.write('.\t'+'\t'.join(sampleIDs)+'\n')
 	for finName in fMNames:
-		with open(finName) as fin:
-			labels = np.array(fin.next().strip().split('\t')[1:],dtype='|S15')
+		# allow reading of gzip files
+		if finName[-3:]=='.gz':fin = gzip.open(finName)
+		else: fin = open(finName)
+		labels = np.array(fin.next().strip().split('\t')[1:],dtype='|S15')
 
-			# doing some checking here to see labels are as expected
-			if checkSampIDs:
-				for label in labels:
-					checkPatientID(label,checkOpt=checkOpt)
+		# doing some checking here to see labels are as expected
+		if checkSampIDs:
+			for label in labels:
+				checkPatientID(label,checkOpt=checkOpt)
 
-			#for sampleID in sampleIDs:
-			#	if not np.any(sampleID==labels):
-			#		logging.warning('WARN0002: sample ID '+sampleID+' not found in feature matrix at '+ finName)
-			#	if np.sum(sampleID==labels)>1:
-			#		logging.warning('WARN0003: sample ID '+sampleID+' had multiple entries in feature matrix at '+ finName+'. Using only the first.')
-			# above is now done below, mostly...
+		#for sampleID in sampleIDs:
+		#	if not np.any(sampleID==labels):
+		#		logging.warning('WARN0002: sample ID '+sampleID+' not found in feature matrix at '+ finName)
+		#	if np.sum(sampleID==labels)>1:
+		#		logging.warning('WARN0003: sample ID '+sampleID+' had multiple entries in feature matrix at '+ finName+'. Using only the first.')
+		# above is now done below, mostly...
 
-			# get index for reordering the columns 
-			logging.info('Reordering samples in '+ finName+' to conform to new sample list for merged FMs.')
-			# get the index to conform the current FM to new sampList, missing values will be indexed at len(labels)
-			sampInd = genUtil.getSampA2OrderSampBInd(labels,sampleIDs)
+		# get index for reordering the columns 
+		logging.info('Reordering samples in '+ finName+' to conform to new sample list for merged FMs.')
+		# get the index to conform the current FM to new sampList, missing values will be indexed at len(labels)
+		sampInd = genUtil.getSampA2OrderSampBInd(labels,sampleIDs)
 
-			# allocate an np array now, its faster, note that missing values idexed to len(labels)
-			data = np.array(np.zeros(len(labels)+1)+np.nan,dtype='|S15')
+		# allocate an np array now, its faster, note that missing values idexed to len(labels)
+		data = np.array(np.zeros(len(labels)+1)+np.nan,dtype='|S15')
 
-			# start appending data
-			for line in fin:
-				tmp = line.strip().split('\t')
-				if len(tmp[1:])!=(len(labels)):
-					raise ValueError('ERR:0011, In feature matrix at '+finName+', the rows do not have equal lengths')
+		# start appending data
+		for line in fin:
+			tmp = line.strip().split('\t')
+			if len(tmp[1:])!=(len(labels)):
+				raise ValueError('ERR:0011, In feature matrix at '+finName+', the rows do not have equal lengths')
 
-				# place data in existing np array for indexing, leave end nan to be consitant with sampInd 
-				data[:-1] = tmp[1:]
-				fout.write(tmp[0]+'\t')
-				
-				
-				# write the data in the new order given by sampInd, refering missing to end
-				fout.write('\t'.join(data[sampInd]))
-				fout.write('\n')
+			# place data in existing np array for indexing, leave end nan to be consitant with sampInd 
+			data[:-1] = tmp[1:]
+			fout.write(tmp[0]+'\t')
+			
+			
+			# write the data in the new order given by sampInd, refering missing to end
+			fout.write('\t'.join(data[sampInd]))
+			fout.write('\n')
+		fin.close()
 
 	fout.close()
 					
