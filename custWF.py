@@ -62,6 +62,7 @@ def run2FMPWwList(FM1Path,FM2Path,pwOutPath,outDir,pwWhich=PWPATH_SGI,samples=''
 
 	# get list of test variables
 	if testFListPath!='':
+		getSimpleList(pwOutPath,testFListPath)
 		
 	os.remove(pairListPath)
 	os.remove(FMTmpPath)
