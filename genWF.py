@@ -139,7 +139,7 @@ def clin2FamForm(curClinFMPath,newClinFMPath,newClinCPFMPath,sampList=''):
 	for the gamcop 101 study.
 	"""
 
-	critP = ['1n2v4','1v4','TermCategory','Gestational_Age_at_Delivery','Preterm','History_of_Preterm_Birth','Placenta_Related,Prom_Related','Preeclampsia/Eclampsia','Incompetent_Shortened_Cervix','Uterine_Related','Hypertension_Related','Immune_Related','Inova_Idiopathic_NA']
+	critP = ['1n2v4','1v4','TermCategory','Gestational_Age_at_Delivery','Preterm','History_of_Preterm_Birth','Placenta_Related','Prom_Related','Preeclampsia/Eclampsia','Incompetent_Shortened_Cervix','Uterine_Related','Hypertension_Related','Immune_Related','Inova_Idiopathic_NA']
 
 	curClinFM = open(curClinFMPath)
 	# get the sample order and check for NB tag tags as expected
