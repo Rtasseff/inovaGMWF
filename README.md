@@ -4,8 +4,9 @@ Genomic and Molecular WorkFlows for the Inova Project.
 
 Dependencies
 ------------------
-Python 2.7
-numpy 1.6.1
+Python 2.7 \\
+numpy 1.6.1 \\
+ISB internal software: pairwise-2.0.0 (2.0.1 for full functionality)\\
 
 Files
 -------------------
