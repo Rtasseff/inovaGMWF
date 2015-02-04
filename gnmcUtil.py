@@ -14,7 +14,62 @@ import sys
 import gzip
 import struct
 import warnings
+import string
 
+def _getNumericCode(genotype):
+	"""Convert vcf call to number.
+	Genotype Code: Ref homozygous is 0, heterozygous is 1, 
+	non-ref homozygous is 2, missing genotype is NA.
+	ported from vcfToFMx.py vdhankan@systemsbiology.org 20150304.
+	"""
+	if genotype == "0/0" or genotype == "0":
+		return "0"
+	elif genotype == "0/1" or genotype == "1/0" or genotype == "1":
+ 		return "1"
+	elif genotype == "1/1":
+		return "2"
+	elif genotype == "./." or genotype == ".":
+		return "NA"
+
+def vcf2FM(vcfFilename,outFMFilename):
+	"""Convert vcf file (path=vcfFilename) to a FM (path=outFMFilename).
+	Genotype Code: Ref homozygous is 0, heterozygous is 1, 
+	non-ref homozygous is 2, missing genotype is NA.
+	ported from vcfToFMx.py vdhankan@systemsbiology.org 20150304.
+	"""
+	vcfFile = gzip.open(vcfFilename,"r")
+        outFile = gzip.open(outFMFilename,"w")
+        for line in vcfFile:
+                columns = line.strip().split()
+                outputColumns = []
+                if line.startswith('chr'):
+                        featureName = "C:GNMC:Data:"+columns[0]+"_"+columns[1]
+                        outputColumns.append(featureName)
+                        outputColumns.extend([getNumericCode(x) for x in columns[9:len(columns)-13]]) #last 13 samples are POs
+                        print >>outFile, '\t'.join(outputColumns)
+                elif line.startswith('#CHROM'):
+                        featureName = "."
+                        outputColumns.append(featureName)
+                        outputColumns.extend(columns[9:len(columns)-13])
+                        print >>outFile, '\t'.join(outputColumns)
+        vcfFile.close()
+
+def vcf2FM_regions():
+	"""This script generates genomic feature matrix to use for pairwise analysis.
+	INPUT: Reads in 634 vcf regions one at a time. The path to these region files is hard coded to be /bigdata0/users/dmauldin/DF5/CMS-EH-MV/
+	OUTPUT: One genomic feature matrix per vcf region. The output FMs are written in the working directory.
+	Genotype Code: Ref homozygous is 0, heterozygous is 1, non-ref homozygous is 2, missing genotype is NA.
+	ported from vcfToFMx.py vdhankan@systemsbiology.org 20150304
+	"""
+	warnings.warn('While the original code (vcfToFMx.py) has been tested, this integrated method has not been; if run is successful please remove this warning')
+	outDir = '/isb/rtasseff/data/featureMatrices/data_VCF_FM_regions_20150304'
+
+	for i in range(1,635):
+		vcfFilename = "/bigdata0/users/dmauldin/DF5/CMS-EH-MV/"+str(i)+".Filtered.vcf.gz"
+		outFMFilename = outDir+'/'+str(i)+".Filtered.fm.gz"
+		vcf2FM(vcfFilename,outFMFilename)
+
+	
 
 def _parseVersion(versionStr):
 	# parse the version string form the CG manifest file
