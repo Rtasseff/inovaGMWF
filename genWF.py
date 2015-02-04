@@ -323,8 +323,7 @@ def catFM(fMNames,sampleIDs,foutPath,checkSampIDs=True,checkOpt={}):
 	fout.write('.\t'+'\t'.join(sampleIDs)+'\n')
 	for finName in fMNames:
 		# allow reading of gzip files
-		if finName[-3:]=='.gz':fin = gzip.open(finName)
-		else: fin = open(finName)
+		fin = genUtil.open2(finName)
 		labels = np.array(fin.next().strip().split('\t')[1:],dtype='|S15')
 
 		# doing some checking here to see labels are as expected

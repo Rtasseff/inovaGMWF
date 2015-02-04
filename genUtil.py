@@ -11,6 +11,8 @@ warnings.filterwarnings("always")
 
 import numpy as np
 import statsUtil 
+import gzip
+
 
 def saveFM(data,fmPath,featHeader,samples):
 	"""Given np arrays, save the feature matrix in 
@@ -523,6 +525,12 @@ def plotter(pairList,fmPath,outDir='.',prefix='pwPlot'):
 	del fmMini
 	del pairInd
 
+def open2(finName):
+	"""open a text OR gzip file (if ends in .gz)"""
+	# allow reading of gzip files
+	if finName[-3:]=='.gz':fin = gzip.open(finName)
+	else: fin = open(finName)
+	return(fin)
 
 def main():
 	pairPath = 'batchPairs.tsv'

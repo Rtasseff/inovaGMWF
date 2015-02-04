@@ -7,6 +7,8 @@ import time
 import sys
 import os
 import random
+import genUtil
+import gzip
 
 PWPATH_TITAN = '/titan/cancerregulome8/TCGA/scripts/pairwise-2.0.0-current'
 PWPATH_SGI = '/isb/rkramer/bin/pairwise-2.0.1'
@@ -25,7 +27,8 @@ def run2FMPWwList(FM1Path,FM2Path,pwOutPath,outDir,pwWhich=PWPATH_SGI,samples=''
 	maxQ will be saved at testFListPath.
 	"""
 
-	FM1 = open(FM1Path)
+	FM1 = genUtil.open2(FM1Path)
+
 	if samples=='':
 		#samples must be taken from the FM
 		samples = FM1.next().strip().split('\t')[1:]
@@ -43,7 +46,7 @@ def run2FMPWwList(FM1Path,FM2Path,pwOutPath,outDir,pwWhich=PWPATH_SGI,samples=''
 	testF = [line.strip().split('\t')[0] for line in FM1]
 	FM1.close()
 	# get feature names for target list
-	FM2 = open(FM2Path)
+	FM2 = genUtil.open(FM2Path)
 	FM2.next()
 	targF = [line.strip().split('\t')[0] for line in FM2]
 	FM2.close()
