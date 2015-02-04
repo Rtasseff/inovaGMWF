@@ -107,8 +107,8 @@ def main():
 	# assumes you are using the PBS vector job option 
 	# after PBS run you must cat, FDR and get list separately 
 	tag = sys.argv[1]
-	outDir = '/isb/rtasseff/results/var_batch_20150202'
-	testFMPath = '/bigdata0/users/vdhankani/GNMC_FM/'+tag+'.Filtered.fm.gz'
+	outDir = '/isb/rtasseff/results/var_batch_20150204'
+	testFMPath = '/isb/rtasseff/data/featureMatrices/data_VCF_FM_regions_20150304/'+tag+'.Filtered.fm.gz'
 	targFMPath = '/isb/rtasseff/data/featureMatrices/BATCH_GNMC_IND_20150109.fm'
 	fullOutPath = outDir+'/fullPWOut_'+tag+'.dat'
 	samplePath = '/isb/rtasseff/data/support/sampleIDList_ind_DF5_itmiFormat.dat'
