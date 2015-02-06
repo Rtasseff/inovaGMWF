@@ -105,7 +105,6 @@ def fdr_bh_filterSortFile(inFilePath,outFilePath,alpha=.05,col=0,delimiter='\t',
 	fin = open(inFilePath)
 	fout = open(outFilePath,'w')
 
-	pTmp = m*pSort/(np.arange(m)+1)
 
 	denom = float(m)
 	q = 1
@@ -116,6 +115,8 @@ def fdr_bh_filterSortFile(inFilePath,outFilePath,alpha=.05,col=0,delimiter='\t',
 			if p<0: p=0
 			if logTrans:p=10**(-1.0*p)
 			qTmp = m*p/denom
+			# every iteration denom drops
+			denom += -1.0
 			q = np.min([q,qTmp])
 
 			if q<alpha:
