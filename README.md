@@ -51,7 +51,21 @@ be required to merge into genWF.
 
 While it is a bit sloppy, and the whole structure of this code may need 
 to be revisited, this allows us to move forward with important, yet small
-analysis tasks without spending resources on redesigning the current code. 
+analysis tasks without spending resources on redesigning the current code.
+
+The main() method has several code snippets to run various procedures.
+The comments should make it clear what they are and where they start/stop.
+The easiest thing is to just comment out all but the needed procedure, 
+and change the corresponding hard-coded paths/options.
+We have tried to make it flow from top to bottom in the order of 
+the typical workflow, but there are multiple 'in-between' steps 
+(e.g. PBS job submissions or bash scripts) that prevented us from 
+forming a single push-button code.
+
+####bashShellScripts
+This directory houses useful bash shell scripts that were used during 
+the typical workflow.
+
 
 To Dos
 ---------------------

@@ -9,6 +9,7 @@ import os
 import random
 import genUtil
 import gzip
+import statsUtil
 
 PWPATH_TITAN = '/titan/cancerregulome8/TCGA/scripts/pairwise-2.0.0-current'
 PWPATH_SGI = '/isb/rkramer/bin/pairwise-2.0.1'
@@ -93,7 +94,9 @@ def getSimpleList(pwOutPath,testFListPath):
 
 def main():
 
-#	###### run a single massive pairwise for getting the batch list
+#	###### run a single massive pairwise for getting the batch list -->
+#	### NOTE:version 2.0.1 of pairwise will break over a certain size FM and did on DF5, 
+#	### see below for alternate solutions RAT 20150202
 #	outDir = '/isb/rtasseff/results/var_batch_20150128'
 #	testFMPath = '/isb/rtasseff/data/featureMatrices/DF5_MergedVCF_ForPairwise_ExcludingPO.fm'
 #	targFMPath = '/isb/rtasseff/data/featureMatrices/BATCH_GNMC_IND_20150109.fm'
@@ -102,18 +105,37 @@ def main():
 #	samplePath = '/isb/rtasseff/data/support/sampleIDList_ind_DF5_itmiFormat.dat'
 #
 #	run2FMPWwList(testFMPath,targFMPath,fullOutPath,outDir,maxQ=.1,testFListPath=listOutPath,samples=samplePath)		
+#	# <--
 #
-	##### run multiple small pairwise to get batch results, 
-	# assumes you are using the PBS vector job option 
-	# after PBS run you must cat, FDR and get list separately 
-	tag = sys.argv[1]
-	outDir = '/isb/rtasseff/results/var_batch_20150204'
-	testFMPath = '/isb/rtasseff/data/featureMatrices/data_VCF_FM_regions_20150304/'+tag+'.Filtered.fm.gz'
-	targFMPath = '/isb/rtasseff/data/featureMatrices/BATCH_GNMC_IND_20150109.fm'
-	fullOutPath = outDir+'/fullPWOut_'+tag+'.dat'
-	samplePath = '/isb/rtasseff/data/support/sampleIDList_ind_DF5_itmiFormat.dat'
+#	##### PRE run multiple small pairwise to get batch results, -->
+#	# NOTE:designed to be called from PBS script for qsub -J
+#	# in 20150203 on DF5 took < 30min per job
+#	# after PBS run use the pw_region_postproc.sh shell script 
+#	# and then the POST code segment below
+#	tag = sys.argv[1]
+#	outDir = '/isb/rtasseff/results/var_batch_20150204'
+#	testFMPath = '/isb/rtasseff/data/featureMatrices/data_VCF_FM_regions_20150304/'+tag+'.Filtered.fm.gz'
+#	targFMPath = '/isb/rtasseff/data/featureMatrices/BATCH_GNMC_IND_20150109.fm'
+#	fullOutPath = outDir+'/fullPWOut_'+tag+'.dat'
+#	samplePath = '/isb/rtasseff/data/support/sampleIDList_ind_DF5_itmiFormat.dat'
+#	
+#	run2FMPWwList(testFMPath,targFMPath,fullOutPath,outDir,maxQ=-1,samples=samplePath)		
+#	# <--
 	
-	run2FMPWwList(testFMPath,targFMPath,fullOutPath,outDir,maxQ=-1,samples=samplePath)		
+	### NOTE: must run pw_region_postproc.sh between PRE and POST!!!
+
+	##### POST run multiple small pairwise to get batch results
+	# assumes you did the PRE step above, and then the pw_region_postproc.sh,
+	# now you can run the last part to get FDR values and a unique list
+	# run from command line on ITMI SGI login took <30min
+	outDir = '/isb/rtasseff/results/var_batch_20150204'
+	inSortedPWPath =  outDir+'/fullPWOut_sorted.dat'
+	outFDRFilteredPWPath =  outDir+'/sigFDRPWOut.dat'
+	outBatchFList = outDir+'/fList_var_batch_20150204.dat'
+
+	statsUtil.fdr_bh_filterSortFile(inSortedPWPath,outFDRFilteredPWPath,alpha=.1,col=5,logTrans=True)
+	getSimpleList(outFDRFilteredPWPath,outBatchFList)
+
 
 
 
