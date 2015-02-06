@@ -46,7 +46,7 @@ def run2FMPWwList(FM1Path,FM2Path,pwOutPath,outDir,pwWhich=PWPATH_SGI,samples=''
 	testF = [line.strip().split('\t')[0] for line in FM1]
 	FM1.close()
 	# get feature names for target list
-	FM2 = genUtil.open(FM2Path)
+	FM2 = genUtil.open2(FM2Path)
 	FM2.next()
 	targF = [line.strip().split('\t')[0] for line in FM2]
 	FM2.close()
@@ -93,17 +93,17 @@ def getSimpleList(pwOutPath,testFListPath):
 
 def main():
 
-	# run a single massive pairwise for getting the batch list
-	outDir = '/isb/rtasseff/results/var_batch_20150128'
-	testFMPath = '/isb/rtasseff/data/featureMatrices/DF5_MergedVCF_ForPairwise_ExcludingPO.fm'
-	targFMPath = '/isb/rtasseff/data/featureMatrices/BATCH_GNMC_IND_20150109.fm'
-	fullOutPath = outDir+'/fullOut.dat'
-	listOutPath = outDir+'/var_batchFilter_featureNameList_20150128.dat'
-	samplePath = '/isb/rtasseff/data/support/sampleIDList_ind_DF5_itmiFormat.dat'
-
-	run2FMPWwList(testFMPath,targFMPath,fullOutPath,outDir,maxQ=.1,testFListPath=listOutPath,samples=samplePath)		
-
-	# run multiple small pairwise to get batch results, 
+#	###### run a single massive pairwise for getting the batch list
+#	outDir = '/isb/rtasseff/results/var_batch_20150128'
+#	testFMPath = '/isb/rtasseff/data/featureMatrices/DF5_MergedVCF_ForPairwise_ExcludingPO.fm'
+#	targFMPath = '/isb/rtasseff/data/featureMatrices/BATCH_GNMC_IND_20150109.fm'
+#	fullOutPath = outDir+'/fullOut.dat'
+#	listOutPath = outDir+'/var_batchFilter_featureNameList_20150128.dat'
+#	samplePath = '/isb/rtasseff/data/support/sampleIDList_ind_DF5_itmiFormat.dat'
+#
+#	run2FMPWwList(testFMPath,targFMPath,fullOutPath,outDir,maxQ=.1,testFListPath=listOutPath,samples=samplePath)		
+#
+	##### run multiple small pairwise to get batch results, 
 	# assumes you are using the PBS vector job option 
 	# after PBS run you must cat, FDR and get list separately 
 	tag = sys.argv[1]
@@ -112,7 +112,6 @@ def main():
 	targFMPath = '/isb/rtasseff/data/featureMatrices/BATCH_GNMC_IND_20150109.fm'
 	fullOutPath = outDir+'/fullPWOut_'+tag+'.dat'
 	samplePath = '/isb/rtasseff/data/support/sampleIDList_ind_DF5_itmiFormat.dat'
-
 	
 	run2FMPWwList(testFMPath,targFMPath,fullOutPath,outDir,maxQ=-1,samples=samplePath)		
 
