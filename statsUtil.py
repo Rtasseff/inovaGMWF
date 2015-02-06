@@ -77,6 +77,54 @@ def fdr_bh(p_full,alpha=.05):
 	return h_full,pAdjUnsort_full,pCrit
 
 
+def fdr_bh_filterSortFile(inFilePath,outFilePath,alpha=.05,col=0,delimiter='\t',logTrans=False,nRows=''):
+	"""Designed for large files that have been sorted from highest p-value 
+	(least sig) to lowest (using eg linux sort command).
+	Assuming 1 p-value per row in the same column of each row.
+	Using the Benjamini & Hochberg 1995
+	multiple test correction FDR
+	We select the top n rows on inFilePath where FDR q < alpha and 
+	print to a new file, outFilePath with FDR q-values appended to the last col.
+	If rows have more entries than the p-values use col to indicate which delimiter separated column
+	(starting at 0) holds the p-values.
+	If pValues in inFilePath are -log transformed set logTrans=True (note numbers should be low to high in this case).
+	If you know the number of rows you can speed the calculation by setting nRows.
+	Cannot properly handle NA values, although if you set nRows to the number of non-NA rows
+	it 'should' work.
+	"""
+	if nRows=='':
+		fin = open(inFilePath)
+		nRows = 0
+		for line in fin:
+			nRows+=1
+	
+	
+
+	m = nRows
+
+	fin = open(inFilePath)
+	fout = open(outFilePath,'w')
+
+	pTmp = m*pSort/(np.arange(m)+1)
+
+	denom = float(m)
+	q = 1
+	for line in fin:
+		p = line.strip().split(delimiter)[col]
+		if p not in nanValues:
+			p = float(p)
+			if p<0: p=0
+			if logTrans:p=10**(-1.0*p)
+			qTmp = m*p/denom
+			q = np.min([q,qTmp])
+
+			if q<alpha:
+				fout.write(delimiter.join(line.strip().split(delimiter))+delimiter+str(q)+'\n')
+
+	fin.close()
+	fout.close()
+
+
 def getGroups(values,labels):
 	"""assuming the labels correspond to the values 
 	we return an np array of values for each label in
