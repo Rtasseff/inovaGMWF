@@ -567,7 +567,7 @@ def main():
 #
 #	genUtil.indFM2FamFM(fmPath,famFMPath,nbList,famSample)
 
-	# --QC feautres 
+	# --QC feautres --> 
 
 #	# -get the QC FM of regions from comand line ->
 #	# **done seperatly
@@ -576,7 +576,7 @@ def main():
 #	vcfPath = sys.argv[1]
 #	fmOutPath = sys.argv[2]
 #	getQCFM_VCF(vcfPath,fmOutPath)
-#	# <-
+#	# <--
 
 #	# -addup QC regions ->
 #	# done seperatly 
@@ -597,11 +597,13 @@ def main():
 	# running on 1 core on SGI for 61K regions requiered 13.5 hours
 	regionManifestPath='/isb/rtasseff/data/transcripts_20141125/transcriptManifest_20141125.dat'
 	sampleIDPath='/isb/rtasseff/data/transcripts_20141125/sampIDList_ITMI_VCF_DF5.tsv'
-	outFMPath='/isb/rtasseff/data/transcripts_20141125/data_GNMC_Trans_IND_20150206.fm'
-	mkRegionFM(regionManifestPath,sampleIDPath,outFMPath,fBaseName='N:GNMC:data',miAFrac=.49,maxMiss=.8)
+	if sys.argv[1]=='MiAC':
+		outFMPath='/isb/rtasseff/data/featureMatrices/data_GNMC_Trans_IND_20150206.fm'
+		mkRegionFM(regionManifestPath,sampleIDPath,outFMPath,fBaseName='N:GNMC:data',miAFrac=.49,maxMiss=.8)
 	# now the FM for the annotations on misisng to be used in other methods:
-	outFMPath='/isb/rtasseff/data/featureMatrice/annotation_GNMC_missing_20150206.fm'
-	mkMissingRegionFM(regionManifestPath,sampleIDPath,outFMPath,maxMiss=.8)
+	if sys.argv[1]=='miss':
+		outFMPath='/isb/rtasseff/data/featureMatrices/annotation_GNMC_missing_20150206.fm'
+		mkMissingRegionFM(regionManifestPath,sampleIDPath,outFMPath,maxMiss=.8)
 	# <--
 
 if __name__ == '__main__':
