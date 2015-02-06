@@ -416,7 +416,7 @@ def _removeMissing(X,maxMiss):
 	keep = np.array(np.ones(m/2),dtype=bool)
 	missed = np.sum(X==0,0)
 	for i in range(0,m,2):
-		if ((missed[i]+missed[i+1])/(n*2.0)) > maxMiss: keep[i/2]=0
+		if ((missed[i]+missed[i+1])/(n*2.0)) > maxMiss: keep[i/2]=False
 	return keep
 		
 def _isMinor(x,miAFrac=.49):
@@ -453,7 +453,7 @@ def _one2twoCol(x):
 	return y
 
 
-def getMiAC(X,miAFrac=.49,maxMiss=.2):
+def getMiAC(X,miAFrac=.49,maxMiss=.8):
 	"""given a matrix of variant calls, X, 
 	find the minor allele count for each sample 
 	and return a vector of the results.
@@ -483,7 +483,43 @@ def getMiAC(X,miAFrac=.49,maxMiss=.2):
 	fMiAC[~keep] = np.nan
 	return fMiAC
 
-def mkRegionFM(regionManifestPath,sampleIDPath,outFMPath,fBaseName='N:GNMC:data',miAFrac=.49,maxMiss=.2):
+def mkMissingRegionFM(regionManifestPath,sampleIDPath,outFMPath,fBaseName='N:GNMC:annotation_missing:',maxMiss=.8):
+	"""Make region based annotation FM that records 
+	True if a sample has too many missing calls (missing>maxMiss),
+	on the individual sample level, given 
+	the transcript manifest and corresponding 
+	data as extracted from split-transcripts.
+	It is critical that the sampleIDPath points to a sample
+	list that matches the columns of the region matrices 
+	in regionManifestPath, no testing can be done!!
+	"""
+	#must have minNum or more variants to count as region
+	minNum = 2
+
+	# get the manifest file 
+	regionReader = RegionManifestReader(regionManifestPath)
+	samples = np.loadtxt(sampleIDPath,dtype=str,delimiter='\t')
+	features = []
+	
+	count = 0
+	maxCount = 100000
+	for region in regionReader:
+		#try:
+		if region.nVar>=minNum:
+			X = region.getData()
+			features.append(fBaseName+region.name)
+			missing = ~_removeMissing(X,maxMiss)
+			if count==0:data = missing
+			else: data = np.vstack([data,missing])
+
+		count = count+1 
+		if count>maxCount: break
+
+
+	genUtil.saveFM(data,outFMPath,features,samples)
+
+
+def mkRegionFM(regionManifestPath,sampleIDPath,outFMPath,fBaseName='N:GNMC:data',miAFrac=.49,maxMiss=.8):
 	"""Make region based data FM,
 	on the individual sample level, given 
 	the transcript manifest and corresponding 
@@ -542,28 +578,31 @@ def main():
 #	getQCFM_VCF(vcfPath,fmOutPath)
 #	# <-
 
-	# -addup QC regions ->
-	# done seperatly 
-	# loops though all regions to sum up a single FM
-	# for QC variables, assumes that all files are 
-	# in the same dir with <qcRegionName>_i.fm 
-	# where i = 1,2...,numQCRegions
-	qcRegionDir = sys.argv[1]
-	qcRegionName = sys.argv[2]
-	numQCRegions = int(sys.argv[3])
-	outQCFMPath = sys.argv[4]
-	summQCRegionFM(qcRegionDir,qcRegionName,numQCRegions,outQCFMPath)
-	# <-
+#	# -addup QC regions ->
+#	# done seperatly 
+#	# loops though all regions to sum up a single FM
+#	# for QC variables, assumes that all files are 
+#	# in the same dir with <qcRegionName>_i.fm 
+#	# where i = 1,2...,numQCRegions
+#	qcRegionDir = sys.argv[1]
+#	qcRegionName = sys.argv[2]
+#	numQCRegions = int(sys.argv[3])
+#	outQCFMPath = sys.argv[4]
+#	summQCRegionFM(qcRegionDir,qcRegionName,numQCRegions,outQCFMPath)
+#	# <-
 
 
 #	
-#	# --Feature Matrix for transcript level data
-#	# running on 1 core on SGI for 61K regions requiered 13.5 hours
-#	regionManifestPath='/isb/rtasseff/data/transcripts_20141125/transcriptManifest_20141125.dat'
-#	sampleIDPath='/isb/rtasseff/data/transcripts_20141125/sampIDList_ITMI_VCF_DF5.tsv'
-#	outFMPath='/isb/rtasseff/data/transcripts_20141125/data_GNMC_Trans_IND_20141223.fm'
-#	mkRegionFM(regionManifestPath,sampleIDPath,outFMPath,fBaseName='N:GNMC:data',miAFrac=.49,maxMiss=.2)
-#
+	# --Feature Matrix for transcript level data -->
+	# running on 1 core on SGI for 61K regions requiered 13.5 hours
+	regionManifestPath='/isb/rtasseff/data/transcripts_20141125/transcriptManifest_20141125.dat'
+	sampleIDPath='/isb/rtasseff/data/transcripts_20141125/sampIDList_ITMI_VCF_DF5.tsv'
+	outFMPath='/isb/rtasseff/data/transcripts_20141125/data_GNMC_Trans_IND_20150206.fm'
+	mkRegionFM(regionManifestPath,sampleIDPath,outFMPath,fBaseName='N:GNMC:data',miAFrac=.49,maxMiss=.8)
+	# now the FM for the annotations on misisng to be used in other methods:
+	outFMPath='/isb/rtasseff/data/featureMatrice/annotation_GNMC_missing_20150206.fm'
+	mkMissingRegionFM(regionManifestPath,sampleIDPath,outFMPath,maxMiss=.8)
+	# <--
 
 if __name__ == '__main__':
 	main()
