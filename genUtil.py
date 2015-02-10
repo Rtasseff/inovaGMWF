@@ -77,6 +77,7 @@ def itmiID2isb(itmiID):
 
 	return(isbID)
 
+
 def cgID2itmi(cgID):
 	"""Transform the CG id to an itmi id.
 	"""
@@ -274,9 +275,9 @@ def getRepNBList(nbListPath):
 
 def mapInd2FAM(indID,nbList):
 	"""effectively -F and -M are 
-	just replaced with -FAM. However,
-	for multi births only the one
-	in the list will be used in the 
+	just replaced with -FAM (if a corresponding NB 
+	is available). However, for multi births only 
+	the one in the NB list will be used in the 
 	-FAM family centric analysis.
 	The nbList will be used to determine
 	if the passed individual is nb and if so
@@ -289,10 +290,28 @@ def mapInd2FAM(indID,nbList):
 	"""
 	membID = 'na'
 	famID = 'na'
+	# find out which families have a corresponding NB
+	# NOTE: if this function is called multiple times
+	# redoing the following allocation and loop each time is a waste,
+	# as of now, however, the extra processor time is  
+	# favorable to extra coding time.
+	nbFamList = nbList.copy()
+	for i in range(len(nbFamList)):
+		tmp = nbFamList[i].split('-')
+		nbFam = tmp[0]+'-'+tmp[1]
+		nbFamList[i] = nbFam
+
 	tmp = indID.split('-')
 	if len(tmp)==3 and tmp[2] in ['F','M']:
-		membID = tmp[2]
-		famID = tmp[0]+'-'+tmp[1]+'-FAM'
+		nbFam = tmp[0]+'-'+tmp[1]
+		# check a rep NB corresponds to this fam
+		if np.any(nbFam==nbFamList):
+			membID = tmp[2]
+			famID = tmp[0]+'-'+tmp[1]+'-FAM'
+		else:
+			famID = 'na'
+			membID = 'na'
+
 	# only checking for multi births which have 4 '-'
 	elif np.any(indID==nbList):
 		famID = tmp[0]+'-'+tmp[1]+'-FAM'
@@ -317,6 +336,32 @@ def mapFam2Ind(famID,nbDic,member):
 		indID = tmp[0]+'-'+tmp[1]+'-'+nbDic[tmp[1]]
 	else: indID = 'na'
 	return(indID)
+
+def mapVCFHead2FAM(vcfHeadPath,outPath,nbListPath):
+	"""In some specific cases it was 
+	necessary to map the VCF header 
+	IDs to the ISB FAM IDs for a particular
+	data freeze.  
+	Given a tsv of vcf header IDs,
+	vcfHeadPath, we produce a map
+	at outPath, where the first col
+	is the vcfHead IDs and the second col
+	is the corresponding ISB FAM ID for 
+	the NB list at nbListPath.
+	"""
+	vcfHead = np.loadtxt(vcfHeadPath,dtype=str,delimiter='\t')
+	fout = open(outPath,'w')
+	nbList = np.loadtxt(nbListPath,dtype=str,delimiter='\t')
+	for vcfID in vcfHead:
+		isbID = itmiID2isb(vcfID)
+		if isbID!='na':
+			famID,mebID = mapInd2FAM(isbID,nbList)
+		else: famID = 'na'
+		fout.write(vcfID+'\t'+famID+'\n')
+	fout.close()
+		
+
+
 
 def getSampA2OrderSampBInd(sampListA,sampListB):
 	"""To transform a feature matrix cohort 
