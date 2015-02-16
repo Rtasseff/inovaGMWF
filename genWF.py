@@ -196,7 +196,10 @@ def clin2FamForm(curClinFMPath,newClinFMPath,newClinCPFMPath,sampList=''):
 		ftype = 'Data'
 		if fname[2] in critP:
 			ftype = 'Critical_Phenotype'
-		newFname = fname[0]+':'+fname[3]+':'+fname[1]+':'+ftype+':'+fname[2]
+		if fname[1]=='MRGE':
+			newFname = fname[0]+':FAM:'+fname[1]+':'+ftype+':'+fname[2]
+		else:
+			newFname = fname[0]+':'+fname[3]+':'+fname[1]+':'+ftype+':'+fname[2]
 		if fname[7]!='':
 			newFname = newFname+'_'+fname[7]
 		# write name and indexed data to file
@@ -593,7 +596,59 @@ def writePWSumLong(pwPath, repPath, minLogQ=2.0,nTopPairs=2):
 			else:
 				rep.write('\t------None > min log(q)--------\n')
 	return(topPairsList)
+
+
+def splitPWResults(pwResultPath,outDir,fNameField,term='',fName='test'):
+	"""This function is used to split the pairwise 
+	result output, in pwResultsPath, into subsets,
+	for further processing downstream, the subset files
+	will be saved in outDir as 
+	<pwResutlsPath file name>_subset_<term>.dat.
+	If term='', we will extract each unique term 
+	found in the specified feature name field, fNameField.
+	E.g. fNameField=1 would separate the field after data
+	type, which is family member in the FAM FMs.
+	If term is specified only results with a feature name
+	field matching the exact term will be extracted.
+	To check the test feature, the first feature in 
+	the pair, set fName='test'. To test the target 
+	feature, the second feature in the pair, use 'target'.
+	If fName='both' it will run the same code on each so 
+	for specific terms the result will be 'and' for no specific 
+	term no logic yet implemented.
+	"""
+
+	pwResult = genUtil.open2(pwResultPath)
 	
+	pwResultName = os.path.splitext(os.path.basename(pwResultPath))[0]
+	# prep a list to hold files if multiples are needed
+	if term=='': 
+		termFile = {}
+		if fName=='test':col = 0
+		elif fName=='target':col = 1
+		else: raise ValueError('The fName '+fName+' is not yet a valid entry.')
+	else: fout = open(outDir+'/'+pwResultName+'_subset_'+term+'.dat','w')
+
+
+	for line in pwResult:
+		if line[0]!='#':
+			if term=='':
+				curTerm = line.strip().split('\t')[col].split(':')[fNameField]
+				if termFile.has_key(curTerm):
+					termFile[curTerm].write(line)
+				else:
+					termFile[curTerm]=open(outDir+'/'+pwResultName+'_subset_'+curTerm+'.dat','w')
+					termFile[curTerm].write(line)
+			else:
+				raise ValueError('Specific terms not yet implemented')
+	
+	for value in termFile.values(): value.close()
+			
+		
+	
+	
+	
+
 
 def _run2FMPW(FM1Path,FM2Path,pwOutPath,pwRepPath,outDir,pwWhich,samples=[],minLogQ=2.0,nTopPairs=2):
 	"""Run pairwise between two exisitng FMs, creates tmp files in outDir
