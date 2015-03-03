@@ -148,6 +148,9 @@ def idListType(smapIDList):
 	sampIDType = 'na'
 	for sampID in smapIDList:
 		sampIDType = idType(sampID)
+		#print sampID
+		#print sampIDType
+
 		if type(sampIDType)==str:break
 
 	return sampIDType
@@ -428,7 +431,7 @@ def indFM2FamFM(indFMPath,famFMPath,nbList,famSample):
 
 
 	# open the individual FM
-	indFM = open(indFMPath)
+	indFM = open2(indFMPath)
 	# get the samples
 	line = indFM.next()
 	indSampleList = np.array(line.strip().split('\t')[1:],dtype=str)
