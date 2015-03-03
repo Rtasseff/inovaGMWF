@@ -1,0 +1,129 @@
+#!/bin/bash
+# Name of job
+#PBS -l select=1:ncpus=1:mem=10gb
+#PBS -l walltime=48:00:00
+# send me mail when job aborts, begins, ends
+#PBS -m abe
+#PBS -M rtasseff@systemsbiology.org
+#PBS -u rtasseff
+#PBS -o out.txt
+#PBS -e err.txt
+
+### NOTE ###
+# We suggest running steps 1-4 from the cmnd line 
+# *without* PBS or at least without the -J option 
+# (ie a single run) as these are all 'pre-proc'
+# steps.
+# Step 5 is the key step to distribute using PBS and 
+# the -J option.
+
+# locaiton of source scritps
+SCRIPTDIR='/isb/rtasseff/tools/eignestrat'
+# results dir
+WRKDIR='/isb/rtasseff/results/eig_nb_20150211'
+
+# load python 
+. /etc/profile.d/modules.sh
+module use /opt/itmi/modules
+module load Python/2.7.8
+# load R
+# module load R/3.1.1
+
+cd $WRKDIR
+
+### step 1  ###
+## compute eigenvectors
+# location of vcf for 1 family member, .gz
+# NOTE: at this time (20150211) due to path issues this command
+# is not working through PBS, and must be run on the login shell
+VCF='/isb/rtasseff/data/vcfs/DF5_MergedVCF_Newborns_791Fams.vcf.gz'
+#Rscript ${SCRIPTDIR}/vcf2pca.R ${VCF} mergedVCF.gds mergedVCF_EigenVecs.tsv mergedVCF_PCA.rda
+
+### step 2 ###
+## save 1st 10 vectors in proper format
+#python ${SCRIPTDIR}/PC2Numpy.py mergedVCF_EigenVecs.tsv
+
+
+### step 3 ###
+## convert phenotype matirx
+#path to phenotype feature matrix
+#PHENOPATH='/isb/rtasseff/data/featureMatrices/data_CLIN_Critical_Phenotype_20150203.fm'
+# NOTE: at this time (20150211) the scritp below can not handel the matrix above,
+# need to use the following semi formated matrix, will improve
+#PHENOPATH='/bigdata0/users/vdhankani/EIGENSTRAT/data_CLIN_20150203_CriticalPhenotypes_Numerical.fm'
+#mkdir pheno
+#cd pheno
+#python ${SCRIPTDIR}/pheno2Numpy.py ${PHENOPATH} 5
+#cd ..
+
+
+### step 4 ###
+## divide the vcf into regions, chromosomes, 
+# this will speed up things when using the PBS job array
+# to do this we use tabix
+# file output dir for the seperated data
+CHR_VCF_OUTDIR='/isb/rtasseff/data/vcfs/nb_chr_20150213'
+#zcat $VCF | head -n92 | bgzip -c > fHdr.gz
+#counter=1
+#while [ $counter -le 22 ]
+#do
+#        echo $counter
+#        tabix $VCF chr$counter |bgzip -c > tmpChr$counter.vcf.gz
+#        zcat fHdr.gz tmpChr$counter.vcf.gz |bgzip -c > ${CHR_VCF_OUTDIR}/mergedVCF_Chr$counter.vcf.gz
+#        (( counter++ ))
+#
+#done
+
+
+### step 4.5 ###
+## some setup for the PBS job array (-J opt).
+# first make the 'parameter' list for the job array
+# the number of pheontype files in pheno
+NPHENO=14
+# number of chromosomes, expect 22
+NCHR=22
+
+## just in case
+#rm parameters.txt
+#
+#for i in $(seq 1 $NPHENO)
+#do 
+#	for j in $(seq 1 $NCHR)
+#	do
+#		echo $i $j >> parameters.txt
+#	done
+#done
+#
+# now make one last thing
+#mkdir output
+
+### step 5 ###
+## run eigenstrat
+# this is hgihly suggested to run using PBS job arrays 
+# given all steps above were previouly run, now
+# comment out those steps and run this using qsub (not ./)
+# not the -J opt should be set to NPHENO*NCHR above.
+
+## path to dir for input chrom vcf files
+CHR_VCF_INDIR=$CHR_VCF_OUTDIR
+## name for dataset
+NAME='NB_PTB'
+## family member 
+MEMB='NB'
+#
+##
+## get the parameters for this job index
+parameters=`cat parameters.txt | tail -n +${PBS_ARRAY_INDEX} | head -1`
+## split the 2 parameters into an array
+parameterArray=($parameters)
+## get the filename in the inputs folder at position PBS_ARRAY_INDEX
+filename=`ls -1 pheno/ | tail -n +${parameterArray[0]} | head -1`
+## get the output file
+OUTFILE=`echo "$filename" | cut -d'.' -f1`'_chr_'${parameterArray[1]}'.out'
+#
+## 
+## the run command 
+python ${SCRIPTDIR}/df4.2_eigenstrat_v2.py —dataset $NAME —vcffile ${CHR_VCF_INDIR}/mergedVCF_Chr${parameterArray[1]}.vcf.gz —target pheno/${filename} —pcfile mergedVCF_EigenVecs.tsv_First10PCs.npy —familyMember $MEMB > output/$OUTFILE
+
+
+
