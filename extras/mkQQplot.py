@@ -3,7 +3,7 @@
 pwOutName='genPW1_data_GNMC_Trans_PW_20150206_vs_data_CLIN_Critical_Phenotype_20150213_out'
 outDir = '/titan/ITMI1/projects/gamcop/analysis/gnmc/transcript_20150216'
 
-#genWF.splitPWResults(outDir+'/'+pwOutName+'.dat',outDir,1)
+#_=genWF.splitPWResults(outDir+'/'+pwOutName+'.dat',outDir,1)
 
 import matplotlib.pyplot as plt
 import numpy as np
