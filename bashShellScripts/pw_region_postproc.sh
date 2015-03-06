@@ -1,7 +1,9 @@
 
 OUTNAME=fullPWOut
 
-cat ${OUTNAME}_* > ${OUTNAME}_tmp.dat
+# cat small files together in order
+cat $(find ./ -name "${OUTNAME}_*" | sort -V) > ${OUTNAME}_tmp.dat
+# remove comment lines
 sed '/^\#/d' ${OUTNAME}_tmp.dat > ${OUTNAME}.dat 
 # (un)comment to keep (remove) extra files, no going back
 rm ${OUTNAME}_*
