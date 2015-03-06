@@ -10,6 +10,8 @@ import random
 import genUtil
 import gzip
 import statsUtil
+import warnings
+
 
 PWPATH_TITAN = '/titan/cancerregulome8/TCGA/scripts/pairwise-2.0.0-current'
 PWPATH_SGI = '/isb/rkramer/bin/pairwise-2.0.1'
@@ -160,6 +162,167 @@ def getSimpleList(pwOutPath,testFListPath):
 		if value[0]!='#':testFListFile.write(value+'\n')
 	testFListFile.close()
 
+
+def _mkDir(outDir):
+	if os.path.exists(outDir):
+		warnings.warn("The dir "+outDir+"already exists, results may be overwritten.",UserWarning)	
+	else:
+		os.makedirs(outDir)
+
+def _pw2VarTable(inPath,outPath):
+	"""Take the standard pairwise output at inPath
+	and put it into our 'results table' format 
+	at outPath.
+	"""
+	pw = open(inPath)
+	rt = open(outPath,'w')
+	rt.write('chr\tpos\tgene\teffect\tp-value\n')
+	for line in pw:
+		tmp = line.strip().split('\t')
+		fName = tmp[0].split(':')
+		var = fName[-1].split('_')
+		chro = var[0]
+		pos = var[1]
+		if fName[0]!='C':eff=tmp[3]
+		else:eff='NA'
+		gene='NA' # currently no easy way to grab this here
+		p = 10**(-1*float(tmp[5]))
+		pStr = '%05.4E' % (p)
+		rt.write(chro+'\t'+pos+'\t'+gene+'\t'+eff+'\t'+pStr+'\n')
+	pw.close()
+	rt.close()
+
+
+
+def parseResultTables(outDir,inputPaths,phenoCodes):
+	"""Method will take paths to existing 
+	result output and parse them into tables
+	within a set directory structure under outDir.
+	inputPaths is a directory that contains 
+	all the paths to be parsed.
+	These paths are actually the outputs of 
+	several different tests.
+	Possible keys:
+	varPheno-FAM	Path to specific file
+			variant pairwise all phenotypes for all family members
+			results are initially in a single file to be sorted,
+			assumes vars are 1st feature and pheno is second in 
+			the standard pairwise output file.
+	varBatch-FAM	Path to specific file
+			variant pairwise for batch for all family members
+			results are initially in a single file to be sorted,
+			assumes vars are 1st feature and batch is second in 
+			the standard pairwise output file.
+	transPheno-FAM	Path to specific file
+			transcript burden pairwise all phenotypes for all family members
+			results are initially in a single file to be sorted
+			assumes vars are 1st feature and pheno is second in 
+			the standard pairwise output file
+	transBatch-FAM	Path to specific file
+			transcript burden pairwise for batch for all family members
+			results are initially in a single file to be sorted
+			assumes transcripts are 1st feature and batch is second in 
+			the standard pairwise output file
+	eigenstrat-M	Variable path, all results must be in same dir
+			standard eigenstrat output for mother against all phenotypes
+	eigenstrat-F	Variable path, all results must be in same dir
+			standard eigenstrat output for father against all phenotypes
+	eigenstrat-NB	Variable path, all results must be in same dir
+			standard eigenstrat output for newborn against all phenotypes
+	cifBat-FAM	Variable path, all results must be in same dir
+			cifBath output for testing family trio on all phenotypes
+	
+	Variable path = used to simplify the path definitions, for these outputs
+			phenotype targets are in separate files, but we can expect 
+			them to be in the same dir with the same format for file
+			name, but with different strings for each phenotype.
+			Therefore use the string $PHENOCODE$ in place of the 
+			phenotype string.  This code will search all phenotype
+			strings in the list phenoCodes.
+	If key is not found parsing for the corresponding result will be skipped.
+	"""
+	#NOTE: this is for readme documentation, probably better ways to do it
+	lastEdit = '20150306'
+	
+	### setup
+	
+	# --set up the output dir
+	 mkDir(outDir)
+	
+	# may not overwrite all tests, so just append info if DIR exits, let user sort it out
+	readme = open(outDir+'/README.txt','a')
+
+	readme.write('------------------------------------------------------------------------------')
+	readme.write('Result Tables for Genomic Association Tests parsed on '+time.strftime("%c")+'.\n')
+	readme.write('This version of parsing code last edited on '+lastEdit+'.\n')
+	readme.write('First level dirs refer to individual tests, followed by family member.\n')
+	readme.write('Tables are saved per target (phenotype) under the member directory.\n')
+
+	
+	### varPheno-FAM
+	if inputPaths.has_key('varPheno-FAM'):
+		path = inputPaths['varPheno-FAM']
+
+		# --Create folder
+		outDirTmp = outDir+'/varPheno'
+		mkDir(outDirTmp)
+
+		# over writing tests, so over write any readme.
+		readmeTmp = open(tmpOutDir+'/README.txt','w')
+		readmeTmp.write('--Parsing varPheno on '+time.strftime("%c")+'.\n')
+		readmeTmp.write('Contains the pairwise test results for variant calls vs phenotypes.\n')
+		readmeTmp.write('- source path:'+path+'\n')
+		readmeTmp.write('- results dir:'+outDirTmp+'\n')
+
+		# split the original file by members, 1 should set terms to members:
+		membList = genWF.splitPWResults(path,outDirTmp,1)
+
+		# gonna need those names later
+		inFileName = os.path.splitext(os.path.basename(path))[0]
+
+		# go through each family member 
+		for memb in membList:
+			path2 = outDirTmp+'/'+inFileName+'_subset_'+memb+'.dat'
+			outDirTmp2 = outDirTmp+'/'+memb
+			mkDir(outDirTmp2)
+			# now split this even further into phenotypes
+			phenoList = genWF.splitPWResults(path2,outDirTmp2,4,fName='target')
+			# now parse each phenotype
+			for pheno in phenoList:
+				path3 = outDirTmp2+'/'+inFileName+'_subset_'+memb+'_subset_'+pheno+'.dat'
+				_pw2VarTable(path3,outDirTmp2+'/resultTable_'+pheno+'.tsv')
+				# remove this path, NOTE:comment if you want to keep split output
+				os.remove(path3)
+			os.remove(path2)
+
+		# that should be each memb each pheno
+
+			
+
+			
+		
+
+		# put some notes in original readme
+		readme.write('-varPheno DONE\n')
+	else:
+		readme.write('-varPheno SKIPPED\n')
+
+
+
+
+	### varBatch:FAM
+
+	### transPheno:FAM
+
+	### transBatch:FAM
+
+	### eigenstrat:M
+
+	### eigenstrat:F
+
+	### eigenstrat:NB
+
+	### cifBat:FAM
 
 
 def main():
