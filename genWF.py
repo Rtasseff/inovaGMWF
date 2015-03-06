@@ -616,6 +616,8 @@ def splitPWResults(pwResultPath,outDir,fNameField,term='',fName='test'):
 	If fName='both' it will run the same code on each so 
 	for specific terms the result will be 'and' for no specific 
 	term no logic yet implemented.
+	
+	Returns a list of subset strings
 	"""
 
 	pwResult = genUtil.open2(pwResultPath)
@@ -624,11 +626,14 @@ def splitPWResults(pwResultPath,outDir,fNameField,term='',fName='test'):
 	# prep a list to hold files if multiples are needed
 	if term=='': 
 		termFile = {}
+		termList = []
 		if fName=='test':col = 0
 		elif fName=='target':col = 1
 		else: raise ValueError('The fName '+fName+' is not yet a valid entry.')
-	else: fout = open(outDir+'/'+pwResultName+'_subset_'+term+'.dat','w')
-
+	else: 
+		fout = open(outDir+'/'+pwResultName+'_subset_'+term+'.dat','w')
+		termList = [term]
+		
 
 	for line in pwResult:
 		if line[0]!='#':
@@ -639,10 +644,13 @@ def splitPWResults(pwResultPath,outDir,fNameField,term='',fName='test'):
 				else:
 					termFile[curTerm]=open(outDir+'/'+pwResultName+'_subset_'+curTerm+'.dat','w')
 					termFile[curTerm].write(line)
+					termList.append(curTerm)
 			else:
 				raise ValueError('Specific terms not yet implemented')
 	
 	for value in termFile.values(): value.close()
+
+	return termList
 			
 		
 	
