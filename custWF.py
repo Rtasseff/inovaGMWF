@@ -11,6 +11,7 @@ import genUtil
 import gzip
 import statsUtil
 import warnings
+import gnmcUtil
 
 
 PWPATH_TITAN = '/titan/cancerregulome8/TCGA/scripts/pairwise-2.0.0-current'
@@ -173,28 +174,132 @@ def _pw2VarTable(inPath,outPath):
 	"""Take the standard pairwise output at inPath
 	and put it into our 'results table' format 
 	at outPath.
+	Specifically reading for variants, expecting 
+	naming convention fName last field (description)
+	to be <chr>_<position>
 	"""
-	pw = open(inPath)
+	pw = genUtil.open2(inPath)
 	rt = open(outPath,'w')
 	rt.write('chr\tpos\tgene\teffect\tp-value\n')
 	for line in pw:
-		tmp = line.strip().split('\t')
-		fName = tmp[0].split(':')
-		var = fName[-1].split('_')
-		chro = var[0]
-		pos = var[1]
-		if fName[0]!='C':eff=tmp[3]
-		else:eff='NA'
-		gene='NA' # currently no easy way to grab this here
-		p = 10**(-1*float(tmp[5]))
-		pStr = '%05.4E' % (p)
-		rt.write(chro+'\t'+pos+'\t'+gene+'\t'+eff+'\t'+pStr+'\n')
+		if line[0]!='#':
+			tmp = line.strip().split('\t')
+			fName = tmp[0].split(':')
+			var = fName[-1].split('_')
+			chro = var[0]
+			pos = var[1]
+			if fName[0]!='C':eff=tmp[3]
+			else:eff='NA'
+			gene='NA' # currently no easy way to grab this here
+			p = 10**(-1*float(tmp[5]))
+			pStr = '%05.4E' % (p)
+			rt.write(chro+'\t'+pos+'\t'+gene+'\t'+eff+'\t'+pStr+'\n')
 	pw.close()
 	rt.close()
 
+def _pw2TransTable(inPath,outPath,regionDic={}):
+	"""Take the standard pairwise output at inPath
+	and put it into our 'results table' format 
+	at outPath.
+	Specifically reading for transcript burdens, expecting 
+	naming convention fName last field (description)
+	to be <burden measure>_<gene>_<transcript ID>
+	Additional information in regionDic,
+	which hold gnmcUtil.Region objects 
+	with region names as the key,
+	expecting region name to be <gene>_<transcript ID>,
+	as used in split-transcript code.
+	"""
+
+	pw = genUtil.open2(inPath)
+	rt = open(outPath,'w')
+	rt.write('transID\tgene\tchr\tstartPos\tstopPos\tnVar\teffect\tp-value\n')
+
+	for line in pw:
+		if line[0]!='#':
+			tmp = line.strip().split('\t')
+			fName = tmp[0].split(':')
+			trans = fName[-1].split('_')
+			transID = trans[2]
+			gene = trans[1]
+			# original region names were appended to a descriptor in the feature name (MiAC)
+			# NOTE: this all requires that the original naming scheme was kept
+			# in the future it would be better to standardize the meta info in a DB
+			# beyond using our simple multi field (: sep) feature naming convention.
+			regionName = '_'.join(trans[1:])
+			if fName[0]!='C':eff=tmp[3]
+			else:eff='NA'
+			p = 10**(-1*float(tmp[5]))
+			pStr = '%05.4E' % (p)
+			if len(regionDic)>0:
+				chro = 'NA'
+				start = 'NA'
+				stop = 'NA'
+				nVar = 'NA'
+			else:
+				region = regionDic[regionName]
+				chro = region.chrom
+				start = str(region.startPos)
+				stop = str(region.stopPos)
+				nVar = str(region.nVar)
+
+			rt.write(transID+'\t'+gene+'\t'+chro+'\t'+start+'\t'+stop+'\t'+nVar+'\t'+eff+'\t'+pStr+'\n')
+	pw.close()
+	rt.close()
+
+def _es2VarTable(inPath,outPath):
+	"""Take the standard eigenstrat output at inPath
+	and put it into our 'results table' format 
+	at outPath.
+	
+	"""
+	#NOTE: would be more flexible/consistent in long term to combine all
+	# *2VarTable methods into one method, limiting test specific code to different file parsers;
+	# however, in the interest of time and uncertainty of reuse, we separated them out for now.
+	fin = genUtil.open2(inPath)
+	rt = open(outPath,'w')
+	rt.write('chr\tpos\tgene\teffect\tp-value\n')
+	# first line is comment:
+	fin.next()
+	for line in fin:
+		tmp = line.strip().split()
+		chro = tmp[1]
+		pos = tmp[2]
+		eff=tmp[4]
+		gene=tmp[-1] # currently no easy way to grab this here
+		pStr = tmp[6]
+		rt.write(chro+'\t'+pos+'\t'+gene+'\t'+eff+'\t'+pStr+'\n')
+	fin.close()
+	rt.close()
+
+def _cbat2VarTable(inPath,outPath):
+	"""Take the standard cifBat output at inPath
+	and put it into our 'results table' format 
+	at outPath.
+	
+	"""
+	#NOTE: would be more flexible/consistent in long term to combine all
+	# *2VarTable methods into one method, limiting test specific code to different file parsers;
+	# however, in the interest of time and uncertainty of reuse, we separated them out for now.
+	fin = genUtil.open2(inPath)
+	rt = open(outPath,'w')
+	rt.write('chr\tpos\tgene\teffect\tp-value\n')
+	# first line is comment:
+	fin.next()
+	for line in fin:
+		tmp = line.strip().split()
+		name = tmp[0].split(':')
+		chro = name[0]
+		pos = name[1]
+		eff=tmp[16]
+		gene=tmp[-1] # currently no easy way to grab this here
+		pStr = tmp[17]
+		rt.write(chro+'\t'+pos+'\t'+gene+'\t'+eff+'\t'+pStr+'\n')
+	fin.close()
+	rt.close()
 
 
-def parseResultTables(outDir,inputPaths,phenoCodes):
+def parseResultTables(outDir,inputPaths,phenoCodes,transManifestPath=''):
 	"""Method will take paths to existing 
 	result output and parse them into tables
 	within a set directory structure under outDir.
@@ -240,39 +345,61 @@ def parseResultTables(outDir,inputPaths,phenoCodes):
 			phenotype string.  This code will search all phenotype
 			strings in the list phenoCodes.
 	If key is not found parsing for the corresponding result will be skipped.
+
+	transManifestPath can be set to the path for the transcript region manifest to 
+	allow for additional annotations to be added to results tables.
 	"""
 	#NOTE: this is for readme documentation, probably better ways to do it
-	lastEdit = '20150306'
+	lastEdit = '20150310'
 	
-	### setup
+	### --setup-- ###
+
 	
 	# --set up the output dir
-	 mkDir(outDir)
+	_mkDir(outDir)
+	
+	# -- top level readme
 	
 	# may not overwrite all tests, so just append info if DIR exits, let user sort it out
 	readme = open(outDir+'/README.txt','a')
 
-	readme.write('------------------------------------------------------------------------------')
+	readme.write('------------------------------------------------------------------------------\n')
 	readme.write('Result Tables for Genomic Association Tests parsed on '+time.strftime("%c")+'.\n')
 	readme.write('This version of parsing code last edited on '+lastEdit+'.\n')
 	readme.write('First level dirs refer to individual tests, followed by family member.\n')
 	readme.write('Tables are saved per target (phenotype) under the member directory.\n')
 
+	# --transcript annotations 
+	# we want to get additional annotations out of the 
+	# manifest file, if it is provided
+	# doing it here rather than in table generation
+	# because it can be used multiple times.
+	# using a dictionary is the easiest, but memory intensive.
+	regionDic = {}
+	if transManifestPath!='':
+		regionReader = gnmcUtil.RegionManifestReader(transManifestPath)
+		for region in regionReader:
+			regionDic[region.name]=region
+		regionReader.close()
+			
+
+
+
 	
-	### varPheno-FAM
+	### --varPheno-FAM-- ###
 	if inputPaths.has_key('varPheno-FAM'):
 		path = inputPaths['varPheno-FAM']
 
 		# --Create folder
 		outDirTmp = outDir+'/varPheno'
-		mkDir(outDirTmp)
+		_mkDir(outDirTmp)
 
 		# over writing tests, so over write any readme.
-		readmeTmp = open(tmpOutDir+'/README.txt','w')
+		readmeTmp = open(outDirTmp+'/README.txt','w')
 		readmeTmp.write('--Parsing varPheno on '+time.strftime("%c")+'.\n')
-		readmeTmp.write('Contains the pairwise test results for variant calls vs phenotypes.\n')
+		readmeTmp.write('Contains the pairwise test results for variant calls vs phenotypes (defined on families).\n')
 		readmeTmp.write('- source path:'+path+'\n')
-		readmeTmp.write('- results dir:'+outDirTmp+'\n')
+		
 
 		# split the original file by members, 1 should set terms to members:
 		membList = genWF.splitPWResults(path,outDirTmp,1)
@@ -284,15 +411,18 @@ def parseResultTables(outDir,inputPaths,phenoCodes):
 		for memb in membList:
 			path2 = outDirTmp+'/'+inFileName+'_subset_'+memb+'.dat'
 			outDirTmp2 = outDirTmp+'/'+memb
-			mkDir(outDirTmp2)
+			_mkDir(outDirTmp2)
 			# now split this even further into phenotypes
 			phenoList = genWF.splitPWResults(path2,outDirTmp2,4,fName='target')
 			# now parse each phenotype
 			for pheno in phenoList:
-				path3 = outDirTmp2+'/'+inFileName+'_subset_'+memb+'_subset_'+pheno+'.dat'
-				_pw2VarTable(path3,outDirTmp2+'/resultTable_'+pheno+'.tsv')
-				# remove this path, NOTE:comment if you want to keep split output
-				os.remove(path3)
+				try:
+					path3 = outDirTmp2+'/'+inFileName+'_subset_'+memb+'_subset_'+pheno+'.dat'
+					_pw2VarTable(path3,outDirTmp2+'/resultTable_'+pheno+'.tsv')
+					# remove this path, NOTE:comment if you want to keep split output
+					os.remove(path3)
+				except:
+					readmeTmp.write('-'+pheno+' unexpected error:'+sys.exc_info()[0]+'\n')
 			os.remove(path2)
 
 		# that should be each memb each pheno
@@ -301,28 +431,309 @@ def parseResultTables(outDir,inputPaths,phenoCodes):
 
 			
 		
-
+		readmeTmp.close()
 		# put some notes in original readme
 		readme.write('-varPheno DONE\n')
+		readme.write('--results dir:'+outDirTmp+'\n')
 	else:
 		readme.write('-varPheno SKIPPED\n')
 
 
 
 
-	### varBatch:FAM
+	### --varBatch-FAM-- ###
+	if inputPaths.has_key('varBatch-FAM'):
+		path = inputPaths['varBatch-FAM']
 
-	### transPheno:FAM
+		# --Create folder
+		outDirTmp = outDir+'/varBatch'
+		_mkDir(outDirTmp)
 
-	### transBatch:FAM
+		# over writing tests, so over write any readme.
+		readmeTmp = open(tmpOutDir+'/README.txt','w')
+		readmeTmp.write('--Parsing varBatch on '+time.strftime("%c")+'.\n')
+		readmeTmp.write('Contains the pairwise test results for variant calls vs batch features (defined on individuals).\n')
+		readmeTmp.write('- source path:'+path+'\n')
+		
 
-	### eigenstrat:M
+		#NOTE: no family members in batch for variant tests, these are done directly agains vcf and individually defined batch features!
 
-	### eigenstrat:F
+		
+		# split the original file by phenotypes, 3 should set terms to pheotypes for individual feature names:
+		phenoList = genWF.splitPWResults(path,outDirTmp,3,fName='target')
 
-	### eigenstrat:NB
+		# gonna need those names later
+		inFileName = os.path.splitext(os.path.basename(path))[0]
 
-	### cifBat:FAM
+		  
+		for pheno in phenoList:
+			try:
+				path2 = outDirTmp+'/'+inFileName+'_subset_'+pheno+'.dat'
+				_pw2VarTable(path2,outDirTmp+'/resultTable_'+pheno+'.tsv')
+				# remove this path, NOTE:comment next line if you want to keep the full pairwise output per phenotype
+				os.remove(path2)
+			except:
+				readmeTmp.write('-'+pheno+' unexpected error:'+sys.exc_info()[0]+'\n')
+
+		readmeTmp.close()
+		# put some notes in original readme
+		readme.write('-varBatch DONE\n')
+		readme.write('--results dir:'+outDirTmp+'\n')
+	else:
+		readme.write('-varBatch SKIPPED\n')
+
+
+
+	### --transPheno-FAM-- ##
+	if inputPaths.has_key('transPheno-FAM'):
+		path = inputPaths['transPheno-FAM']
+
+		# --Create folder
+		outDirTmp = outDir+'/transPheno'
+		_mDir(outDirTmp)
+
+		# over writing tests, so over write any readme.
+		readmeTmp = open(outDirTmp+'/README.txt','w')
+		readmeTmp.write('--Parsing transPheno on '+time.strftime("%c")+'.\n')
+		readmeTmp.write('Contains the pairwise test results for transcript burden vs phenotypes (defined on families).\n')
+		readmeTmp.write('Originally we expect the transcript burden to be the minor allele count (MiAC) of ppc variants;\n')
+		readmeTmp.write('However, that level of detail is not automatically confirmed by this script.\n')
+		readmeTmp.write('- source path:'+path+'\n')
+		
+
+		# split the original file by members, 1 should set terms to members:
+		membList = genWF.splitPWResults(path,outDirTmp,1)
+
+		# gonna need those names later
+		inFileName = os.path.splitext(os.path.basename(path))[0]
+
+		# go through each family member 
+		for memb in membList:
+			path2 = outDirTmp+'/'+inFileName+'_subset_'+memb+'.dat'
+			outDirTmp2 = outDirTmp+'/'+memb
+			_mkDir(outDirTmp2)
+			# now split this even further into phenotypes
+			phenoList = genWF.splitPWResults(path2,outDirTmp2,4,fName='target')
+			# now parse each phenotype
+			for pheno in phenoList:
+				try:
+					path3 = outDirTmp2+'/'+inFileName+'_subset_'+memb+'_subset_'+pheno+'.dat'
+					_pw2TransTable(path3,outDirTmp2+'/resultTable_'+pheno+'.tsv',regionDic=regionDic)
+					# remove this path, NOTE:comment if you want to keep split output
+					os.remove(path3)
+				except:
+					readmeTmp.write('-'+pheno+' unexpected error:'+sys.exc_info()[0]+'\n')
+			os.remove(path2)
+
+		# that should be each memb each pheno
+
+			
+		
+		readmeTmp.close()
+		# put some notes in original readme
+		readme.write('-transPheno DONE\n')
+		readme.write('--results dir:'+outDirTmp+'\n')
+	else:
+		readme.write('-transPheno SKIPPED\n')
+
+
+
+	### --transBatch-FAM-- ###
+	if inputPaths.has_key('transBatch-FAM'):
+		path = inputPaths['transBatch-FAM']
+
+		# --Create folder
+		outDirTmp = outDir+'/transBatch'
+		_mkDir(outDirTmp)
+
+		# over writing tests, so over write any readme.
+		readmeTmp = open(outDirTmp+'/README.txt','w')
+		readmeTmp.write('--Parsing transBatch on '+time.strftime("%c")+'.\n')
+		readmeTmp.write('Contains the pairwise test results for transcript burden vs batches (defined on families).\n')
+		readmeTmp.write('Originally we expect the transcript burden to be the minor allele count (MiAC) of ppc variants;\n')
+		readmeTmp.write('However, that level of detail is not automatically confirmed by this script.\n')
+		readmeTmp.write('- source path:'+path+'\n')
+		
+
+		# split the original file by members, 1 should set terms to members:
+		membList = genWF.splitPWResults(path,outDirTmp,1)
+
+		# gonna need those names later
+		inFileName = os.path.splitext(os.path.basename(path))[0]
+
+		# go through each family member 
+		for memb in membList:
+			path2 = outDirTmp+'/'+inFileName+'_subset_'+memb+'.dat'
+			outDirTmp2 = outDirTmp+'/'+memb
+			_mkDir(outDirTmp2)
+			# now split this even further into phenotypes
+			phenoList = genWF.splitPWResults(path2,outDirTmp2,4,fName='target')
+			# now parse each phenotype
+			for pheno in phenoList:
+				try:
+					path3 = outDirTmp2+'/'+inFileName+'_subset_'+memb+'_subset_'+pheno+'.dat'
+					_pw2TransTable(path3,outDirTmp2+'/resultTable_'+pheno+'.tsv',regionDic=regionDic)
+					# remove this path, NOTE:comment if you want to keep split output
+					os.remove(path3)
+				except:
+					readmeTmp.write('-'+pheno+' unexpected error:'+sys.exc_info()[0]+'\n')
+			os.remove(path2)
+
+		# that should be each memb each pheno
+
+			
+		
+		readmeTmp.close()
+		# put some notes in original readme
+		readme.write('-transBatch DONE\n')
+		readme.write('--results dir:'+outDirTmp+'\n')
+	else:
+		readme.write('-transBatch SKIPPED\n')
+
+
+	### --eigenstrat-M-- ###
+	if inputPaths.has_key('eigenstrat-M'):
+		path = inputPaths['eigenstrat-M']
+
+		# --Create folder
+		outDirTmp = outDir+'/eigenstrat'
+		_mkDir(outDirTmp)
+		outDirTmp = outDir+'/eigenstrat/M'
+		_mkDir(outDirTmp)
+
+		# over writing tests, so over write any readme.
+		readmeTmp = open(outDirTmp+'/README.txt','w')
+		readmeTmp.write('--Parsing eigenstrat on '+time.strftime("%c")+'.\n')
+		readmeTmp.write('Contains the eigenstrat test results for variants in mother vs phenotypes (defined on families).\n')
+		readmeTmp.write('Originally we expect the eigenstrat test to adjust for the first 10 PC;\n')
+		readmeTmp.write('However, that level of detail is not automatically confirmed by this script.\n')
+		readmeTmp.write('- source path:'+path+'\n')
+
+
+		# different files for each phenotype:
+		for pheno in phenoCodes:
+			try:
+				path2 = path.replace("$PHENOCODE$",pheno)
+				_es2VarTable(path2,outDirTmp+'/resultTable_'+pheno+'.tsv')
+			except:
+			    readmeTmp.write('-'+pheno+' unexpected error:'+sys.exc_info()[0]+'\n')
+
+		
+
+		readmeTmp.close()
+		# put some notes in original readme
+		readme.write('-eigenstrat-M DONE\n')
+		readme.write('--results dir:'+outDirTmp+'\n')
+	else:
+		readme.write('-eigenstrat-M SKIPPED\n')
+
+
+	### --eigenstrat-F-- ###
+	if inputPaths.has_key('eigenstrat-F'):
+		path = inputPaths['eigenstrat-F']
+
+		# --Create folder
+		outDirTmp = outDir+'/eigenstrat'
+		_mkDir(outDirTmp)
+		outDirTmp = outDir+'/eigenstrat/F'
+		_mkDir(outDirTmp)
+
+		# over writing tests, so over write any readme.
+		readmeTmp = open(outDirTmp+'/README.txt','w')
+		readmeTmp.write('--Parsing eigenstrat on '+time.strftime("%c")+'.\n')
+		readmeTmp.write('Contains the eigenstrat test results for variants in father vs phenotypes (defined on families).\n')
+		readmeTmp.write('Originally we expect the eigenstrat test to adjust for the first 10 PC;\n')
+		readmeTmp.write('However, that level of detail is not automatically confirmed by this script.\n')
+		readmeTmp.write('- source path:'+path+'\n')
+
+
+		# different files for each phenotype:
+		for pheno in phenoCodes:
+			try:
+				path2 = path.replace("$PHENOCODE$",pheno)
+				_es2VarTable(path2,outDirTmp+'/resultTable_'+pheno+'.tsv')
+			except:
+			    readmeTmp.write('-'+pheno+' unexpected error:'+sys.exc_info()[0]+'\n')
+
+
+		readmeTmp.close()
+		# put some notes in original readme
+		readme.write('-eigenstrat-F DONE\n')
+		readme.write('--results dir:'+outDirTmp+'\n')
+	else:
+		readme.write('-eigenstrat-F SKIPPED\n')
+
+
+	### --eigenstrat-NB-- ###
+	if inputPaths.has_key('eigenstrat-NB'):
+		path = inputPaths['eigenstrat-NB']
+
+		# --Create folder
+		outDirTmp = outDir+'/eigenstrat'
+		_mkDir(outDirTmp)
+		outDirTmp = outDir+'/eigenstrat/F'
+		_mkDir(outDirTmp)
+
+		# over writing tests, so over write any readme.
+		readmeTmp = open(outDirTmp+'/README.txt','w')
+		readmeTmp.write('--Parsing eigenstrat on '+time.strftime("%c")+'.\n')
+		readmeTmp.write('Contains the eigenstrat test results for variants in newborn vs phenotypes (defined on families).\n')
+		readmeTmp.write('Originally we expect the eigenstrat test to adjust for the first 10 PC;\n')
+		readmeTmp.write('However, that level of detail is not automatically confirmed by this script.\n')
+		readmeTmp.write('- source path:'+path+'\n')
+
+
+		# different files for each phenotype:
+		for pheno in phenoCodes:
+			try:
+				path2 = path.replace("$PHENOCODE$",pheno)
+				_es2VarTable(path2,outDirTmp+'/resultTable_'+pheno+'.tsv')
+			except:
+			    readmeTmp.write('-'+pheno+' unexpected error:'+sys.exc_info()[0]+'\n')
+
+		readmeTmp.close()
+		# put some notes in original readme
+		readme.write('-eigenstrat-NB DONE\n')
+		readme.write('--results dir:'+outDirTmp+'\n')
+	else:
+		readme.write('-eigenstrat-NB SKIPPED\n')
+
+
+	### --cifBat-FAM-- ###
+	if inputPaths.has_key('cifBat-FAM'):
+		path = inputPaths['eigenstrat-NB']
+
+		# --Create folder
+		outDirTmp = outDir+'/cifBat'
+		_mkDir(outDirTmp)
+		outDirTmp = outDir+'/eigenstrat/FAM'
+		_mkDir(outDirTmp)
+
+		# over writing tests, so over write any readme.
+		readmeTmp = open(outDirTmp+'/README.txt','w')
+		readmeTmp.write('--Parsing cifBat on '+time.strftime("%c")+'.\n')
+		readmeTmp.write('Contains the cifBat test results for variants in trios vs phenotypes (defined on families).\n')
+		readmeTmp.write('Taking results from the additive model.\n')
+		readmeTmp.write('- source path:'+path+'\n')
+
+
+		# different files for each phenotype:
+		for pheno in phenoCodes:
+			try:
+				path2 = path.replace("$PHENOCODE$",pheno.replace('_',''))
+				_cbat2VarTable(path2,outDirTmp+'/resultTable_'+pheno+'.tsv')
+			except:
+			    readmeTmp.write('-'+pheno+' unexpected error:'+sys.exc_info()[0]+'\n')
+
+		readmeTmp.close()
+		# put some notes in original readme
+		readme.write('-cifBat-FAM DONE\n')
+		readme.write('--results dir:'+outDirTmp+'\n')
+	else:
+		readme.write('-cifBat-FAM SKIPPED\n')
+	
+	readme.close()
+
 
 
 def main():
@@ -368,25 +779,62 @@ def main():
 #
 #	statsUtil.fdr_bh_filterSortFile(inSortedPWPath,outFDRFilteredPWPath,alpha=.1,col=5,logTrans=True)
 #	getSimpleList(outFDRFilteredPWPath,outBatchFList)
+#
+#
+#	##### PRE run multiple small pairwise to get phenotype results, -->
+#	# NOTE:designed to be called from PBS script for qsub -J
+#	# in 20150210 on DF5 took < 5min per job
+#	# after PBS run use the pw_region_postproc.sh shell script 
+#	# and then the POST code segment '##### POST run multiple small pairwise results'
+#	tag = sys.argv[1]
+#	outDir = '/isb/rtasseff/results/var_pheno_20150210'
+#	testFMPath = '/isb/rtasseff/data/featureMatrices/data_VCF_FM_regions_20150304/'+tag+'.Filtered.fm.gz'
+#	targFMPath = '/isb/rtasseff/data/featureMatrices/data_CLIN_Critical_Phenotype_20150203.fm'
+#	fullOutPath = outDir+'/fullPWOut_'+tag+'.dat'
+#	nbListPath = '/isb/rtasseff/data/support/repNBList.tsv'
+#	
+#	runPW_INDvFAM(testFMPath,targFMPath,fullOutPath,outDir,nbListPath)		
+#	# <--
 
 
-	##### PRE run multiple small pairwise to get phenotype results, -->
-	# NOTE:designed to be called from PBS script for qsub -J
-	# in 20150210 on DF5 took < 5min per job
-	# after PBS run use the pw_region_postproc.sh shell script 
-	# and then the POST code segment '##### POST run multiple small pairwise results'
-	tag = sys.argv[1]
-	outDir = '/isb/rtasseff/results/var_pheno_20150210'
-	testFMPath = '/isb/rtasseff/data/featureMatrices/data_VCF_FM_regions_20150304/'+tag+'.Filtered.fm.gz'
-	targFMPath = '/isb/rtasseff/data/featureMatrices/data_CLIN_Critical_Phenotype_20150203.fm'
-	fullOutPath = outDir+'/fullPWOut_'+tag+'.dat'
-	nbListPath = '/isb/rtasseff/data/support/repNBList.tsv'
+	#### Parse results tables, -->
+	# giong through tests outputs to create tables of 
+	# all results within a set dir structure.
+	# Uses format specifications as of 20150310
 	
-	runPW_INDvFAM(testFMPath,targFMPath,fullOutPath,outDir,nbListPath)		
-	# <--
+	# give paths in dic
+	inputPaths = {}
+	inputPaths['varPheno-FAM'] = '/isb/rtasseff/results/var_pheno_20150210/fullPWOut.dat'
+	inputPaths['varBatch-FAM'] = '/isb/rtasseff/results/var_batch_20150204/fullPWOut.dat'
+	inputPaths['transPheno-FAM'] = '/isb/rtasseff/results/transcript_20150216/genPW1_data_GNMC_Trans_PW_20150206_vs_data_CLIN_Critical_Phenotype_20150213_out.dat'
+	inputPaths['transBatch-FAM'] = '/isb/rtasseff/results/transcript_20150216/genPW1_data_GNMC_Trans_PW_20150206_vs_BATCH_GNMC_20150109_out.dat'
+	inputPaths['eigenstrat-M'] = '/isb/rtasseff/results/eig_f_20150211/OUTPUT/final$PHENOCODE$.out'
+	inputPaths['eigenstrat-F'] = '/isb/rtasseff/results/eig_f_20150211/output/final$PHENOCODE$.out'
+	#inputPaths['eigenstrat-NB'] = 
+	inputPaths['cifBat-FAM'] = '/bigdata0/users/vdhankani/CIFBAT/OUTPUT/$PHENOCODE$/$PHENOCODE$Autosomal.tdt.out.gz'
+	
+	# define phenotype codes in list
+	phenoCodes = ['1n2v4',
+	'Hypertension_Related',
+	'Incompetent_Cervix',
+	'Preeclampsia',
+	'Uterine_Related',
+	'1v4',
+	'IdiopathicNA',
+	'Infection_Related',
+	'Preterm',
+	'History_PTB',
+	'Immune_Related',
+	'Placenta_Related',
+	'Prom_Related',
+	'TermCategory',
+	'Gestational_Age_at_Delivery']
 
+	outDir = '/isb/rtasseff/results/result_tables_20150310'
 
+	transManifestPath = '/isb/rtasseff/data/transcripts_20141125/transcriptManifest_20141125.dat'
 
+	parseResultTables(outDir,inputPaths,phenoCodes,transManifestPath=transManifestPath)
 
 if __name__ == '__main__':
 	main()
