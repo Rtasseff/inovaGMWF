@@ -321,14 +321,14 @@ def readBiMat(path,nRow):
 	return(X)
 
 class RegionManifestReader:
-	"""Reads the file at the given path as the mainfest of the 
-	regions that were identifed by split-transcripts.  
+	"""Reads the file at the given path as the manifest of the 
+	regions that were identified by split-transcripts.  
 	Can iterate through using next(), returns a region.
-	Assumes the paths in the mainfest for the data are 
+	Assumes the paths in the manifest for the data are 
 	relative to the same dir as the manifest,
 	otherwise you can specify the relative dir path
-	on initilization.
-	Must close the reder like a file object when done.
+	on initialization.
+	Must close the reader like a file object when done.
 	"""
 	# setting for parsing the manifest file from split-transcripts
 	delim = '\t'
