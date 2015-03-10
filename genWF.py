@@ -639,6 +639,7 @@ def splitPWResults(pwResultPath,outDir,fNameField,term='',fName='test'):
 		if line[0]!='#':
 			if term=='':
 				curTerm = line.strip().split('\t')[col].split(':')[fNameField]
+				curTerm = curTerm.replace('/','_')
 				if termFile.has_key(curTerm):
 					termFile[curTerm].write(line)
 				else:
