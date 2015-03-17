@@ -27,6 +27,22 @@ from scipy.stats import rankdata
 
 nanValues = ['NA','NaN','na','nan']
 
+def qqPlot(pValues,outpath):
+	"""Make a qq plot of pValues
+	saved to output path, path should have png extension.
+	"""
+	n = len(pValues)
+	pExp = np.arange(1,0,-1.0/n)
+	plt.plot(pExp,np.sort(pValues)[::-1])
+	plt.plot([pExp[0],pExp[-1]],[pExp[0],pExp[-1]])
+	plt.xlabel('expected -logP')
+	plt.ylabel('observed -logP')
+	plt.savefig(outpath,format='png')
+	plt.clf()
+	plt.close()
+
+
+
 def fdr_bh(p_full,alpha=.05):
 	"""Performs the Benjamini & Hochberg 1995
 	multiple test correction for controlling
