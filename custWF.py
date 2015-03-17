@@ -12,6 +12,7 @@ import gzip
 import statsUtil
 import warnings
 import gnmcUtil
+import statsUtil
 
 
 PWPATH_TITAN = '/titan/cancerregulome8/TCGA/scripts/pairwise-2.0.0-current'
@@ -217,33 +218,38 @@ def _pw2TransTable(inPath,outPath,regionDic={}):
 
 	for line in pw:
 		if line[0]!='#':
-			tmp = line.strip().split('\t')
-			fName = tmp[0].split(':')
-			trans = fName[-1].split('_')
-			transID = trans[2]
-			gene = trans[1]
-			# original region names were appended to a descriptor in the feature name (MiAC)
-			# NOTE: this all requires that the original naming scheme was kept
-			# in the future it would be better to standardize the meta info in a DB
-			# beyond using our simple multi field (: sep) feature naming convention.
-			regionName = '_'.join(trans[1:])
-			if fName[0]!='C':eff=tmp[3]
-			else:eff='NA'
-			p = 10**(-1*float(tmp[5]))
-			pStr = '%05.4E' % (p)
-			if len(regionDic)>0:
-				chro = 'NA'
-				start = 'NA'
-				stop = 'NA'
-				nVar = 'NA'
-			else:
-				region = regionDic[regionName]
-				chro = region.chrom
-				start = str(region.startPos)
-				stop = str(region.stopPos)
-				nVar = str(region.nVar)
+			try:
+				# NOTE: issue with some transcript names containing ':', 
+				# skipping for now, but should really fix that.
+				tmp = line.strip().split('\t')
+				fName = tmp[0].split(':')
+				trans = fName[-1].split('_')
+				transID = '_'.join(trans[2:])
+				gene = trans[1]
+				# original region names were appended to a descriptor in the feature name (MiAC)
+				# NOTE: this all requires that the original naming scheme was kept
+				# in the future it would be better to standardize the meta info in a DB
+				# beyond using our simple multi field (: sep) feature naming convention.
+				regionName = '_'.join(trans[1:])
+				if fName[0]!='C':eff=tmp[3]
+				else:eff='NA'
+				p = 10**(-1*float(tmp[5]))
+				pStr = '%05.4E' % (p)
+				if len(regionDic)==0:
+					chro = 'NA'
+					start = 'NA'
+					stop = 'NA'
+					nVar = 'NA'
+				else:
+					region = regionDic[regionName]
+					chro = region.chrom
+					start = str(region.startPos)
+					stop = str(region.stopPos)
+					nVar = str(region.nVar)
 
-			rt.write(transID+'\t'+gene+'\t'+chro+'\t'+start+'\t'+stop+'\t'+nVar+'\t'+eff+'\t'+pStr+'\n')
+				rt.write(transID+'\t'+gene+'\t'+chro+'\t'+start+'\t'+stop+'\t'+nVar+'\t'+eff+'\t'+pStr+'\n')
+			except:
+				print 'issue with line: '+line+' in '+inPath
 	pw.close()
 	rt.close()
 
@@ -262,13 +268,16 @@ def _es2VarTable(inPath,outPath):
 	# first line is comment:
 	fin.next()
 	for line in fin:
-		tmp = line.strip().split()
-		chro = tmp[1]
-		pos = tmp[2]
-		eff=tmp[4]
-		gene=tmp[-1] # currently no easy way to grab this here
-		pStr = tmp[6]
-		rt.write(chro+'\t'+pos+'\t'+gene+'\t'+eff+'\t'+pStr+'\n')
+		try:
+			tmp = line.strip().split()
+			chro = tmp[1]
+			pos = tmp[2]
+			eff=tmp[4]
+			gene=tmp[-1] # currently no easy way to grab this here
+			pStr = tmp[6]
+			rt.write(chro+'\t'+pos+'\t'+gene+'\t'+eff+'\t'+pStr+'\n')
+		except:
+			print 'issue with line: '+line+' in '+inPath
 	fin.close()
 	rt.close()
 
@@ -287,16 +296,67 @@ def _cbat2VarTable(inPath,outPath):
 	# first line is comment:
 	fin.next()
 	for line in fin:
-		tmp = line.strip().split()
-		name = tmp[0].split(':')
-		chro = name[0]
-		pos = name[1]
-		eff=tmp[16]
-		gene=tmp[-1] # currently no easy way to grab this here
-		pStr = tmp[17]
-		rt.write(chro+'\t'+pos+'\t'+gene+'\t'+eff+'\t'+pStr+'\n')
+		try:
+			tmp = line.strip().split()
+			name = tmp[0].split(':')
+			chro = name[0]
+			pos = name[1]
+			eff=tmp[16]
+			gene=tmp[-1] # currently no easy way to grab this here
+			pStr = tmp[17]
+			rt.write(chro+'\t'+pos+'\t'+gene+'\t'+eff+'\t'+pStr+'\n')
+		except:
+			print 'issue with line: '+line+' in '+inPath
 	fin.close()
 	rt.close()
+
+def pValueSummaries(inTablePath,outDir, pCol=4,qMax=.1):
+	"""Given a table, at inTablePath, that has p-values in column pCol
+	create summaries in outDir.  
+	Including an abbreviated table of all rows with FDR<qMax
+	and a q-q plot.
+	"""
+	inTable = open(inTablePath)
+	
+	#skip header
+	tmp = inTable.next()
+	pValues = np.array([line.strip().split('\t')[pCol] for line in inTable],dtype=float)
+	inTable.close()
+
+	# create qq-plot
+	statsUtil.qqPlot(pValues,outDir+'/qqPlot.png')
+
+	# get FDR
+	h,q,_ = statsUtil.fdr_bh(pValues,alpha=qMax)
+
+	# Create new table with FDR
+	outTable = open(outDir+'/topFDRTable.tsv','w')
+
+	# add some summary lines
+	outTable.write('# Hits < qMax ('+str(qMax)+'): '+str(np.sum(h))+'\n')
+	outTable.write('# Min p-value: '+str(np.min(pValues))+', q='+str(np.min(q))+'\n')
+
+	inTable = open(inTablePath)
+	head = inTable.next()
+	head = head.strip().split('\t')
+	head.append('FDR_q')
+	outTable.write('\t'.join(head)+'\n')
+
+	i = 0
+	for line in inTable:
+		if q[i]<qMax:
+			line = line.strip().split('\t')
+			line.append(str(q[i]))
+			outTable.write('\t'.join(line)+'\n')
+		i = i+1
+
+	inTable.close()
+	outTable.close()
+
+			
+		
+
+
 
 
 def parseResultTables(outDir,inputPaths,phenoCodes,transManifestPath=''):
@@ -418,11 +478,17 @@ def parseResultTables(outDir,inputPaths,phenoCodes,transManifestPath=''):
 			for pheno in phenoList:
 				try:
 					path3 = outDirTmp2+'/'+inFileName+'_subset_'+memb+'_subset_'+pheno+'.dat'
-					_pw2VarTable(path3,outDirTmp2+'/resultTable_'+pheno+'.tsv')
+					outDirTmp3 = outDirTmp2+'/'+pheno
+					_mkDir(outDirTmp3)
+					_pw2VarTable(path3,outDirTmp3+'/resultTable.tsv')
 					# remove this path, NOTE:comment if you want to keep split output
 					os.remove(path3)
-				except:
-					readmeTmp.write('-'+pheno+' unexpected error:'+sys.exc_info()[0]+'\n')
+					
+					# make some additional summary stuff using the table:
+					pValueSummaries(outDirTmp3+'/resultTable.tsv',outDirTmp3, pCol=4,qMax=.1)
+
+				except Exception as e:
+					readmeTmp.write('-'+memb+'-'+pheno+' unexpected error:'+str(e)+'\n')
 			os.remove(path2)
 
 		# that should be each memb each pheno
@@ -450,7 +516,7 @@ def parseResultTables(outDir,inputPaths,phenoCodes,transManifestPath=''):
 		_mkDir(outDirTmp)
 
 		# over writing tests, so over write any readme.
-		readmeTmp = open(tmpOutDir+'/README.txt','w')
+		readmeTmp = open(outDirTmp+'/README.txt','w')
 		readmeTmp.write('--Parsing varBatch on '+time.strftime("%c")+'.\n')
 		readmeTmp.write('Contains the pairwise test results for variant calls vs batch features (defined on individuals).\n')
 		readmeTmp.write('- source path:'+path+'\n')
@@ -469,11 +535,17 @@ def parseResultTables(outDir,inputPaths,phenoCodes,transManifestPath=''):
 		for pheno in phenoList:
 			try:
 				path2 = outDirTmp+'/'+inFileName+'_subset_'+pheno+'.dat'
-				_pw2VarTable(path2,outDirTmp+'/resultTable_'+pheno+'.tsv')
+				outDirTmp2 = outDirTmp+'/'+pheno
+				_mkDir(outDirTmp2)
+				_pw2VarTable(path2,outDirTmp2+'/resultTable.tsv')
 				# remove this path, NOTE:comment next line if you want to keep the full pairwise output per phenotype
 				os.remove(path2)
-			except:
-				readmeTmp.write('-'+pheno+' unexpected error:'+sys.exc_info()[0]+'\n')
+
+				# make some additional summary stuff using the table:
+				pValueSummaries(outDirTmp2+'/resultTable.tsv',outDirTmp2, pCol=4,qMax=.1)
+
+			except Exception as e:
+				readmeTmp.write('-'+memb+'-'+pheno+' unexpected error:'+str(e)+'\n')
 
 		readmeTmp.close()
 		# put some notes in original readme
@@ -490,7 +562,7 @@ def parseResultTables(outDir,inputPaths,phenoCodes,transManifestPath=''):
 
 		# --Create folder
 		outDirTmp = outDir+'/transPheno'
-		_mDir(outDirTmp)
+		_mkDir(outDirTmp)
 
 		# over writing tests, so over write any readme.
 		readmeTmp = open(outDirTmp+'/README.txt','w')
@@ -518,11 +590,17 @@ def parseResultTables(outDir,inputPaths,phenoCodes,transManifestPath=''):
 			for pheno in phenoList:
 				try:
 					path3 = outDirTmp2+'/'+inFileName+'_subset_'+memb+'_subset_'+pheno+'.dat'
-					_pw2TransTable(path3,outDirTmp2+'/resultTable_'+pheno+'.tsv',regionDic=regionDic)
+					outDirTmp3 = outDirTmp2+'/'+pheno
+					_mkDir(outDirTmp3)
+					_pw2TransTable(path3,outDirTmp3+'/resultTable.tsv',regionDic=regionDic)
 					# remove this path, NOTE:comment if you want to keep split output
 					os.remove(path3)
-				except:
-					readmeTmp.write('-'+pheno+' unexpected error:'+sys.exc_info()[0]+'\n')
+
+					# make some additional summary stuff using the table:
+					pValueSummaries(outDirTmp3+'/resultTable.tsv',outDirTmp3, pCol=7,qMax=.1)
+
+				except Exception as e:
+					readmeTmp.write('-'+memb+'-'+pheno+' unexpected error:'+str(e)+'\n')
 			os.remove(path2)
 
 		# that should be each memb each pheno
@@ -572,11 +650,17 @@ def parseResultTables(outDir,inputPaths,phenoCodes,transManifestPath=''):
 			for pheno in phenoList:
 				try:
 					path3 = outDirTmp2+'/'+inFileName+'_subset_'+memb+'_subset_'+pheno+'.dat'
-					_pw2TransTable(path3,outDirTmp2+'/resultTable_'+pheno+'.tsv',regionDic=regionDic)
+					outDirTmp3 = outDirTmp2+'/'+pheno
+					_mkDir(outDirTmp3)
+					_pw2TransTable(path3,outDirTmp3+'/resultTable.tsv',regionDic=regionDic)
 					# remove this path, NOTE:comment if you want to keep split output
 					os.remove(path3)
-				except:
-					readmeTmp.write('-'+pheno+' unexpected error:'+sys.exc_info()[0]+'\n')
+
+					# make some additional summary stuff using the table:
+					pValueSummaries(outDirTmp3+'/resultTable.tsv',outDirTmp3, pCol=7,qMax=.1)
+
+				except Exception as e:
+					readmeTmp.write('-'+memb+'-'+pheno+' unexpected error:'+str(e)+'\n')
 			os.remove(path2)
 
 		# that should be each memb each pheno
@@ -614,9 +698,15 @@ def parseResultTables(outDir,inputPaths,phenoCodes,transManifestPath=''):
 		for pheno in phenoCodes:
 			try:
 				path2 = path.replace("$PHENOCODE$",pheno)
-				_es2VarTable(path2,outDirTmp+'/resultTable_'+pheno+'.tsv')
-			except:
-			    readmeTmp.write('-'+pheno+' unexpected error:'+sys.exc_info()[0]+'\n')
+				outDirTmp2 = outDirTmp+'/'+pheno
+				_mkDir(outDirTmp2)
+				_es2VarTable(path2,outDirTmp2+'/resultTable.tsv')
+
+				# make some additional summary stuff using the table:
+				pValueSummaries(outDirTmp2+'/resultTable.tsv',outDirTmp2, pCol=4,qMax=.1)
+
+			except Exception as e:
+			    readmeTmp.write('-'+pheno+' unexpected error:'+str(e)+'\n')
 
 		
 
@@ -651,9 +741,15 @@ def parseResultTables(outDir,inputPaths,phenoCodes,transManifestPath=''):
 		for pheno in phenoCodes:
 			try:
 				path2 = path.replace("$PHENOCODE$",pheno)
-				_es2VarTable(path2,outDirTmp+'/resultTable_'+pheno+'.tsv')
-			except:
-			    readmeTmp.write('-'+pheno+' unexpected error:'+sys.exc_info()[0]+'\n')
+				outDirTmp2 = outDirTmp+'/'+pheno
+				_mkDir(outDirTmp2)
+				_es2VarTable(path2,outDirTmp2+'/resultTable.tsv')
+
+				# make some additional summary stuff using the table:
+				pValueSummaries(outDirTmp2+'/resultTable.tsv',outDirTmp2, pCol=4,qMax=.1)
+
+			except Exception as e:
+			    readmeTmp.write('-'+pheno+' unexpected error:'+str(e)+'\n')
 
 
 		readmeTmp.close()
@@ -687,9 +783,15 @@ def parseResultTables(outDir,inputPaths,phenoCodes,transManifestPath=''):
 		for pheno in phenoCodes:
 			try:
 				path2 = path.replace("$PHENOCODE$",pheno)
-				_es2VarTable(path2,outDirTmp+'/resultTable_'+pheno+'.tsv')
-			except:
-			    readmeTmp.write('-'+pheno+' unexpected error:'+sys.exc_info()[0]+'\n')
+				outDirTmp2 = outDirTmp+'/'+pheno
+				_mkDir(outDirTmp2)
+				_es2VarTable(path2,outDirTmp2+'/resultTable.tsv')
+
+				# make some additional summary stuff using the table:
+				pValueSummaries(outDirTmp2+'/resultTable.tsv',outDirTmp2, pCol=4,qMax=.1)
+
+			except Exception as e:
+			    readmeTmp.write('-'+pheno+' unexpected error:'+str(e)+'\n')
 
 		readmeTmp.close()
 		# put some notes in original readme
@@ -701,12 +803,12 @@ def parseResultTables(outDir,inputPaths,phenoCodes,transManifestPath=''):
 
 	### --cifBat-FAM-- ###
 	if inputPaths.has_key('cifBat-FAM'):
-		path = inputPaths['eigenstrat-NB']
+		path = inputPaths['cifBat-FAM']
 
 		# --Create folder
 		outDirTmp = outDir+'/cifBat'
 		_mkDir(outDirTmp)
-		outDirTmp = outDir+'/eigenstrat/FAM'
+		outDirTmp = outDir+'/cifBat/FAM'
 		_mkDir(outDirTmp)
 
 		# over writing tests, so over write any readme.
@@ -721,9 +823,15 @@ def parseResultTables(outDir,inputPaths,phenoCodes,transManifestPath=''):
 		for pheno in phenoCodes:
 			try:
 				path2 = path.replace("$PHENOCODE$",pheno.replace('_',''))
-				_cbat2VarTable(path2,outDirTmp+'/resultTable_'+pheno+'.tsv')
-			except:
-			    readmeTmp.write('-'+pheno+' unexpected error:'+sys.exc_info()[0]+'\n')
+				outDirTmp2 = outDirTmp+'/'+pheno
+				_mkDir(outDirTmp2)
+				_cbat2VarTable(path2,outDirTmp2+'/resultTable.tsv')
+
+				# make some additional summary stuff using the table:
+				pValueSummaries(outDirTmp2+'/resultTable.tsv',outDirTmp2, pCol=4,qMax=.1)
+				
+			except Exception as e:
+			    readmeTmp.write('-'+pheno+' unexpected error:'+str(e)+'\n')
 
 		readmeTmp.close()
 		# put some notes in original readme
@@ -808,7 +916,7 @@ def main():
 	inputPaths['varBatch-FAM'] = '/isb/rtasseff/results/var_batch_20150204/fullPWOut.dat'
 	inputPaths['transPheno-FAM'] = '/isb/rtasseff/results/transcript_20150216/genPW1_data_GNMC_Trans_PW_20150206_vs_data_CLIN_Critical_Phenotype_20150213_out.dat'
 	inputPaths['transBatch-FAM'] = '/isb/rtasseff/results/transcript_20150216/genPW1_data_GNMC_Trans_PW_20150206_vs_BATCH_GNMC_20150109_out.dat'
-	inputPaths['eigenstrat-M'] = '/isb/rtasseff/results/eig_f_20150211/OUTPUT/final$PHENOCODE$.out'
+	inputPaths['eigenstrat-M'] = '/isb/rtasseff/results/eig_m_20150211/OUTPUT/final$PHENOCODE$.out'
 	inputPaths['eigenstrat-F'] = '/isb/rtasseff/results/eig_f_20150211/output/final$PHENOCODE$.out'
 	#inputPaths['eigenstrat-NB'] = 
 	inputPaths['cifBat-FAM'] = '/bigdata0/users/vdhankani/CIFBAT/OUTPUT/$PHENOCODE$/$PHENOCODE$Autosomal.tdt.out.gz'
@@ -830,7 +938,7 @@ def main():
 	'TermCategory',
 	'Gestational_Age_at_Delivery']
 
-	outDir = '/isb/rtasseff/results/result_tables_20150310'
+	outDir = '/isb/rtasseff/results/result_tables_20150316'
 
 	transManifestPath = '/isb/rtasseff/data/transcripts_20141125/transcriptManifest_20141125.dat'
 
