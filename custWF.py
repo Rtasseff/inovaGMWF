@@ -880,14 +880,14 @@ def main():
 #	# assumes you did the PRE step above, and then the pw_region_postproc.sh,
 #	# now you can run the last part to get FDR values and a unique list
 #	# run from command line on ITMI SGI login took <30min
-#	outDir = '/isb/rtasseff/results/var_batch_20150204'
-#	inSortedPWPath =  outDir+'/fullPWOut_sorted.dat'
+#	outDir = '/isb/rtasseff/results/transcript_20150216'
+#	inSortedPWPath =  outDir+'/genPW1_data_GNMC_Trans_PW_20150206_vs_BATCH_GNMC_20150109_out_sorted.dat'
 #	outFDRFilteredPWPath =  outDir+'/sigFDRPWOut.dat'
-#	outBatchFList = outDir+'/fList_var_batch_20150204.dat'
+#	outBatchFList = outDir+'/fList_trans_batch_20150320.dat'
 #
 #	statsUtil.fdr_bh_filterSortFile(inSortedPWPath,outFDRFilteredPWPath,alpha=.1,col=5,logTrans=True)
 #	getSimpleList(outFDRFilteredPWPath,outBatchFList)
-#
+
 #
 #	##### PRE run multiple small pairwise to get phenotype results, -->
 #	# NOTE:designed to be called from PBS script for qsub -J
@@ -943,6 +943,9 @@ def main():
 	transManifestPath = '/isb/rtasseff/data/transcripts_20141125/transcriptManifest_20141125.dat'
 
 	parseResultTables(outDir,inputPaths,phenoCodes,transManifestPath=transManifestPath)
+
+	#### <---, Parse results tables
+
 
 if __name__ == '__main__':
 	main()
