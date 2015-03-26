@@ -310,48 +310,88 @@ def _cbat2VarTable(inPath,outPath):
 	fin.close()
 	rt.close()
 
-def pValueSummaries(inTablePath,outDir, pCol=4,qMax=.1):
+def filterVarBatch(inTablePath,outTablePath,varBatchList):
+	"""Filter the table at inTablePath for the variant batch features
+	in the varBatchList list and save it to outTablePath.
+	"""
+	inTable = open(inTablePath)
+	outTable = open(outTablePath,'w')
+
+	line = inTable.next()
+	outTable.write(line)
+
+	for line in inTable:
+		tmp = line.split('\t')
+		var = tmp[0]+'_'+tmp[1]
+		if not var in varBatchList:
+			outTable.write(line)
+	inTable.close()
+	outTable.close()
+
+def filterTransBatch(inTablePath,outTablePath,transBatchList):
+	"""Filter the table at inTablePath for the transcript batch features
+	in the transBatchList list and save it to outTablePath.
+	"""
+	inTable = open(inTablePath)
+	outTable = open(outTablePath,'w')
+
+	line = inTable.next()
+	outTable.write(line)
+
+	for line in inTable:
+		tmp = line.split('\t')
+		trans = 'MiAC_'+tmp[1]+'_'+tmp[0]
+		if not trans in transBatchList:
+			outTable.write()
+	inTable.close()
+	outTable.close()
+
+def pValueSummaries(inTablePath,outDir, pCol=4,qMax=.1,runFDR=True,runQQ=True):
 	"""Given a table, at inTablePath, that has p-values in column pCol
 	create summaries in outDir.  
 	Including an abbreviated table of all rows with FDR<qMax
 	and a q-q plot.
 	"""
-	inTable = open(inTablePath)
-	
-	#skip header
-	tmp = inTable.next()
-	pValues = np.array([line.strip().split('\t')[pCol] for line in inTable],dtype=float)
-	inTable.close()
+	if runFDR or runQQ:
+		inTable = open(inTablePath)
+		
+		#skip header
+		tmp = inTable.next()
+		pValues = np.array([line.strip().split('\t')[pCol] for line in inTable],dtype=float)
+		inTable.close()
 
-	# create qq-plot
-	statsUtil.qqPlot(pValues,outDir+'/qqPlot.png')
+		if runQQ:
+			# create qq-plot
+			statsUtil.qqPlot(pValues,outDir+'/qqPlot.png')
 
-	# get FDR
-	h,q,_ = statsUtil.fdr_bh(pValues,alpha=qMax)
+		if runFDR:
 
-	# Create new table with FDR
-	outTable = open(outDir+'/topFDRTable.tsv','w')
+			# get FDR
+			h,q,_ = statsUtil.fdr_bh(pValues,alpha=qMax)
 
-	# add some summary lines
-	outTable.write('# Hits < qMax ('+str(qMax)+'): '+str(np.sum(h))+'\n')
-	outTable.write('# Min p-value: '+str(np.min(pValues))+', q='+str(np.min(q))+'\n')
+			# Create new table with FDR
+			outTable = open(outDir+'/topFDRTable.tsv','w')
 
-	inTable = open(inTablePath)
-	head = inTable.next()
-	head = head.strip().split('\t')
-	head.append('FDR_q')
-	outTable.write('\t'.join(head)+'\n')
+			# add some summary lines
+			outTable.write('# Hits < qMax ('+str(qMax)+'): '+str(np.sum(h))+'\n')
+			outTable.write('# Min p-value: '+str(np.min(pValues))+', q='+str(np.min(q))+'\n')
 
-	i = 0
-	for line in inTable:
-		if q[i]<qMax:
-			line = line.strip().split('\t')
-			line.append(str(q[i]))
-			outTable.write('\t'.join(line)+'\n')
-		i = i+1
+			inTable = open(inTablePath)
+			head = inTable.next()
+			head = head.strip().split('\t')
+			head.append('FDR_q')
+			outTable.write('\t'.join(head)+'\n')
 
-	inTable.close()
-	outTable.close()
+			i = 0
+			for line in inTable:
+				if q[i]<qMax:
+					line = line.strip().split('\t')
+					line.append(str(q[i]))
+					outTable.write('\t'.join(line)+'\n')
+				i = i+1
+
+			inTable.close()
+			outTable.close()
 
 			
 		
@@ -359,7 +399,7 @@ def pValueSummaries(inTablePath,outDir, pCol=4,qMax=.1):
 
 
 
-def parseResultTables(outDir,inputPaths,phenoCodes,transManifestPath=''):
+def parseResultTables(outDir,inputPaths,phenoCodes,transManifestPath='',runFDR=True,runQQ=True):
 	"""Method will take paths to existing 
 	result output and parse them into tables
 	within a set directory structure under outDir.
@@ -396,6 +436,12 @@ def parseResultTables(outDir,inputPaths,phenoCodes,transManifestPath=''):
 			standard eigenstrat output for newborn against all phenotypes
 	cifBat-FAM	Variable path, all results must be in same dir
 			cifBath output for testing family trio on all phenotypes
+	transBatchList	The path to the list of feature names for transcripts that 
+			were found to be batch related and should be removed.  If 
+			no key, batch filtering will be skipped.
+	varBatchList	The path to the list of feature names for variants that were 
+			found to be batch related and should be removed.  If no key,
+			batch filtering will be skipped.
 	
 	Variable path = used to simplify the path definitions, for these outputs
 			phenotype targets are in separate files, but we can expect 
@@ -410,7 +456,7 @@ def parseResultTables(outDir,inputPaths,phenoCodes,transManifestPath=''):
 	allow for additional annotations to be added to results tables.
 	"""
 	#NOTE: this is for readme documentation, probably better ways to do it
-	lastEdit = '20150310'
+	lastEdit = '20150321'
 	
 	### --setup-- ###
 
@@ -437,13 +483,29 @@ def parseResultTables(outDir,inputPaths,phenoCodes,transManifestPath=''):
 	# using a dictionary is the easiest, but memory intensive.
 	regionDic = {}
 	if transManifestPath!='':
+		readme.write('-Transcript manifest used for annotations at: '+transManifestPath+'\n')
 		regionReader = gnmcUtil.RegionManifestReader(transManifestPath)
 		for region in regionReader:
 			regionDic[region.name]=region
 		regionReader.close()
 			
 
+	# --batch filter lists
+	# if a path to the batch feature list is provided
+	# it will be loaded into a dic (NOTE:very memory intensive)
+	# and a batch filter feature list will be made in 
+	# addition to the unfiltered table
+	varBatchList = []
+	if inputPaths.has_key('varBatchList'):
+		readme.write('-Variant batch filter list at: '+inputPaths['varBatchList']+'\n')
+		inList = open(inputPaths['varBatchList'])
+		varBatchList = [line.strip().split(':')[-1] for line in inList]
 
+	transBatchList = []
+	if inputPaths.has_key('transBatchList'):
+		readme.write('-Transcript batch filter list at: '+inputPaths['transBatchList']+'\n')
+		inList = open(inputPaths['transBatchList'])
+		transBatchList = [line.strip().split(':')[-1] for line in inList]
 
 	
 	### --varPheno-FAM-- ###
@@ -483,9 +545,11 @@ def parseResultTables(outDir,inputPaths,phenoCodes,transManifestPath=''):
 					_pw2VarTable(path3,outDirTmp3+'/resultTable.tsv')
 					# remove this path, NOTE:comment if you want to keep split output
 					os.remove(path3)
-					
-					# make some additional summary stuff using the table:
-					pValueSummaries(outDirTmp3+'/resultTable.tsv',outDirTmp3, pCol=4,qMax=.1)
+
+					if len(varBatchList)>0:
+						filterVarBatch(outDirTmp3+'/resultTable.tsv',outDirTmp3+'/resultTable_batchFiltered.tsv',varBatchList)
+						# make some additional summary stuff using the table:
+						pValueSummaries(outDirTmp3+'/resultTable_batchFiltered.tsv',outDirTmp3, pCol=4,qMax=.1,runFDR=runFDR,runQQ=runQQ)
 
 				except Exception as e:
 					readmeTmp.write('-'+memb+'-'+pheno+' unexpected error:'+str(e)+'\n')
@@ -542,7 +606,7 @@ def parseResultTables(outDir,inputPaths,phenoCodes,transManifestPath=''):
 				os.remove(path2)
 
 				# make some additional summary stuff using the table:
-				pValueSummaries(outDirTmp2+'/resultTable.tsv',outDirTmp2, pCol=4,qMax=.1)
+				pValueSummaries(outDirTmp2+'/resultTable.tsv',outDirTmp2, pCol=4,qMax=.1,runFDR=runFDR,runQQ=runQQ)
 
 			except Exception as e:
 				readmeTmp.write('-'+memb+'-'+pheno+' unexpected error:'+str(e)+'\n')
@@ -595,9 +659,11 @@ def parseResultTables(outDir,inputPaths,phenoCodes,transManifestPath=''):
 					_pw2TransTable(path3,outDirTmp3+'/resultTable.tsv',regionDic=regionDic)
 					# remove this path, NOTE:comment if you want to keep split output
 					os.remove(path3)
-
-					# make some additional summary stuff using the table:
-					pValueSummaries(outDirTmp3+'/resultTable.tsv',outDirTmp3, pCol=7,qMax=.1)
+					if len(transBatchList)>0:
+						filterTransBatch(outDirTmp3+'/resultTable.tsv',outDirTmp3+'/resultTable_batchFiltered.tsv',transBatchList)
+						
+						# make some additional summary stuff using the table:
+						pValueSummaries(outDirTmp3+'/resultTable_batchFiltered.tsv',outDirTmp3, pCol=7,qMax=.1,runFDR=runFDR,runQQ=runQQ)
 
 				except Exception as e:
 					readmeTmp.write('-'+memb+'-'+pheno+' unexpected error:'+str(e)+'\n')
@@ -657,7 +723,7 @@ def parseResultTables(outDir,inputPaths,phenoCodes,transManifestPath=''):
 					os.remove(path3)
 
 					# make some additional summary stuff using the table:
-					pValueSummaries(outDirTmp3+'/resultTable.tsv',outDirTmp3, pCol=7,qMax=.1)
+					pValueSummaries(outDirTmp3+'/resultTable.tsv',outDirTmp3, pCol=7,qMax=.1,runFDR=runFDR,runQQ=runQQ)
 
 				except Exception as e:
 					readmeTmp.write('-'+memb+'-'+pheno+' unexpected error:'+str(e)+'\n')
@@ -701,9 +767,11 @@ def parseResultTables(outDir,inputPaths,phenoCodes,transManifestPath=''):
 				outDirTmp2 = outDirTmp+'/'+pheno
 				_mkDir(outDirTmp2)
 				_es2VarTable(path2,outDirTmp2+'/resultTable.tsv')
-
-				# make some additional summary stuff using the table:
-				pValueSummaries(outDirTmp2+'/resultTable.tsv',outDirTmp2, pCol=4,qMax=.1)
+				
+				if len(varBatchList)>0:
+					filterVarBatch(outDirTmp2+'/resultTable.tsv',outDirTmp2+'/resultTable_batchFiltered.tsv',varBatchList)
+					# make some additional summary stuff using the table:
+					pValueSummaries(outDirTmp2+'/resultTable_batchFiltered.tsv',outDirTmp2, pCol=4,qMax=.1,runFDR=runFDR,runQQ=runQQ)
 
 			except Exception as e:
 			    readmeTmp.write('-'+pheno+' unexpected error:'+str(e)+'\n')
@@ -745,8 +813,10 @@ def parseResultTables(outDir,inputPaths,phenoCodes,transManifestPath=''):
 				_mkDir(outDirTmp2)
 				_es2VarTable(path2,outDirTmp2+'/resultTable.tsv')
 
-				# make some additional summary stuff using the table:
-				pValueSummaries(outDirTmp2+'/resultTable.tsv',outDirTmp2, pCol=4,qMax=.1)
+				if len(varBatchList)>0:
+					filterVarBatch(outDirTmp2+'/resultTable.tsv',outDirTmp2+'/resultTable_batchFiltered.tsv',varBatchList)
+					# make some additional summary stuff using the table:
+					pValueSummaries(outDirTmp2+'/resultTable_batchFiltered.tsv',outDirTmp2, pCol=4,qMax=.1,runFDR=runFDR,runQQ=runQQ)
 
 			except Exception as e:
 			    readmeTmp.write('-'+pheno+' unexpected error:'+str(e)+'\n')
@@ -787,8 +857,11 @@ def parseResultTables(outDir,inputPaths,phenoCodes,transManifestPath=''):
 				_mkDir(outDirTmp2)
 				_es2VarTable(path2,outDirTmp2+'/resultTable.tsv')
 
-				# make some additional summary stuff using the table:
-				pValueSummaries(outDirTmp2+'/resultTable.tsv',outDirTmp2, pCol=4,qMax=.1)
+				if len(varBatchList)>0:
+					filterVarBatch(outDirTmp2+'/resultTable.tsv',outDirTmp2+'/resultTable_batchFiltered.tsv',varBatchList)
+
+					# make some additional summary stuff using the table:
+					pValueSummaries(outDirTmp2+'/resultTable_batchFiltered.tsv',outDirTmp2, pCol=4,qMax=.1,runFDR=runFDR,runQQ=runQQ)
 
 			except Exception as e:
 			    readmeTmp.write('-'+pheno+' unexpected error:'+str(e)+'\n')
@@ -827,8 +900,10 @@ def parseResultTables(outDir,inputPaths,phenoCodes,transManifestPath=''):
 				_mkDir(outDirTmp2)
 				_cbat2VarTable(path2,outDirTmp2+'/resultTable.tsv')
 
-				# make some additional summary stuff using the table:
-				pValueSummaries(outDirTmp2+'/resultTable.tsv',outDirTmp2, pCol=4,qMax=.1)
+				if len(varBatchList)>0:
+					filterVarBatch(outDirTmp2+'/resultTable.tsv',outDirTmp2+'/resultTable_batchFiltered.tsv',varBatchList)
+					# make some additional summary stuff using the table:
+					pValueSummaries(outDirTmp2+'/resultTable_batchFiltered.tsv',outDirTmp2, pCol=4,qMax=.1,runFDR=runFDR,runQQ=runQQ)
 				
 			except Exception as e:
 			    readmeTmp.write('-'+pheno+' unexpected error:'+str(e)+'\n')
@@ -912,14 +987,28 @@ def main():
 	
 	# give paths in dic
 	inputPaths = {}
-	inputPaths['varPheno-FAM'] = '/isb/rtasseff/results/var_pheno_20150210/fullPWOut.dat'
-	inputPaths['varBatch-FAM'] = '/isb/rtasseff/results/var_batch_20150204/fullPWOut.dat'
-	inputPaths['transPheno-FAM'] = '/isb/rtasseff/results/transcript_20150216/genPW1_data_GNMC_Trans_PW_20150206_vs_data_CLIN_Critical_Phenotype_20150213_out.dat'
-	inputPaths['transBatch-FAM'] = '/isb/rtasseff/results/transcript_20150216/genPW1_data_GNMC_Trans_PW_20150206_vs_BATCH_GNMC_20150109_out.dat'
-	inputPaths['eigenstrat-M'] = '/isb/rtasseff/results/eig_m_20150211/OUTPUT/final$PHENOCODE$.out'
-	inputPaths['eigenstrat-F'] = '/isb/rtasseff/results/eig_f_20150211/output/final$PHENOCODE$.out'
-	#inputPaths['eigenstrat-NB'] = 
-	inputPaths['cifBat-FAM'] = '/bigdata0/users/vdhankani/CIFBAT/OUTPUT/$PHENOCODE$/$PHENOCODE$Autosomal.tdt.out.gz'
+	# added tags to break up jobs using the PBS job array
+	tag = int(sys.argv[1])
+	if tag==1:
+		inputPaths['varPheno-FAM'] = '/isb/rtasseff/results/var_pheno_20150210/fullPWOut.dat'
+	elif tag==2:
+		inputPaths['varBatch-FAM'] = '/isb/rtasseff/results/var_batch_20150204/fullPWOut.dat'
+	elif tag==3:
+		inputPaths['transPheno-FAM'] = '/isb/rtasseff/results/transcript_20150216/genPW1_data_GNMC_Trans_PW_20150206_vs_data_CLIN_Critical_Phenotype_20150213_out.dat'
+	elif tag==4:
+		inputPaths['transBatch-FAM'] = '/isb/rtasseff/results/transcript_20150216/genPW1_data_GNMC_Trans_PW_20150206_vs_BATCH_GNMC_20150109_out.dat'
+	elif tag==5:
+		inputPaths['eigenstrat-M'] = '/isb/rtasseff/results/eig_m_20150211/OUTPUT/final$PHENOCODE$.out'
+	elif tag==6:
+		inputPaths['eigenstrat-F'] = '/isb/rtasseff/results/eig_f_20150211/output/final$PHENOCODE$.out'
+	elif tag==7:
+		inputPaths['eigenstrat-NB'] = '/isb/rtasseff/results/eig_nb_20150211/output/final$PHENOCODE$.out'
+	elif tag==8:
+		inputPaths['cifBat-FAM'] = '/bigdata0/users/vdhankani/CIFBAT/OUTPUT/$PHENOCODE$/$PHENOCODE$Autosomal.tdt.out.gz'
+
+	# batch list paths:
+	inputPaths['transBatchList'] = '/isb/rtasseff/results/transcript_20150216/fList_trans_batch_20150320.dat'
+	inputPaths['varBatchList'] = '/isb/rtasseff/results/var_batch_20150204/fList_var_batch_20150204.dat'
 	
 	# define phenotype codes in list
 	phenoCodes = ['1n2v4',
@@ -938,11 +1027,11 @@ def main():
 	'TermCategory',
 	'Gestational_Age_at_Delivery']
 
-	outDir = '/isb/rtasseff/results/result_tables_20150316'
+	outDir = '/isb/rtasseff/results/result_tables_20150326'
 
 	transManifestPath = '/isb/rtasseff/data/transcripts_20141125/transcriptManifest_20141125.dat'
 
-	parseResultTables(outDir,inputPaths,phenoCodes,transManifestPath=transManifestPath)
+	parseResultTables(outDir,inputPaths,phenoCodes,transManifestPath=transManifestPath,runFDR=True,runQQ=True)
 
 	#### <---, Parse results tables
 
