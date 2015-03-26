@@ -97,33 +97,58 @@ NCHR=22
 # now make one last thing
 #mkdir output
 
-### step 5 ###
-## run eigenstrat
-# this is hgihly suggested to run using PBS job arrays 
-# given all steps above were previouly run, now
-# comment out those steps and run this using qsub (not ./)
-# not the -J opt should be set to NPHENO*NCHR above.
-
-## path to dir for input chrom vcf files
-CHR_VCF_INDIR=$CHR_VCF_OUTDIR
-## name for dataset
-NAME='NB_PTB'
-## family member 
-MEMB='NB'
+#### step 5 ###
+### run eigenstrat
+## this is hgihly suggested to run using PBS job arrays 
+## given all steps above were previouly run, now
+## comment out those steps and run this using qsub (not ./)
+## note the -J opt should be set to NPHENO*NCHR above.
 #
+### path to dir for input chrom vcf files
+#CHR_VCF_INDIR=$CHR_VCF_OUTDIR
+### name for dataset
+#NAME='NB_PTB'
+### family member 
+#MEMB='NB'
 ##
-## get the parameters for this job index
-parameters=`cat parameters.txt | tail -n +${PBS_ARRAY_INDEX} | head -1`
-## split the 2 parameters into an array
-parameterArray=($parameters)
-## get the filename in the inputs folder at position PBS_ARRAY_INDEX
-filename=`ls -1 pheno/ | tail -n +${parameterArray[0]} | head -1`
-## get the output file
-OUTFILE=`echo "$filename" | cut -d'.' -f1`'_chr_'${parameterArray[1]}'.out'
+###
+### get the parameters for this job index
+#parameters=`cat parameters.txt | tail -n +${PBS_ARRAY_INDEX} | head -1`
+### split the 2 parameters into an array
+#parameterArray=($parameters)
+### get the filename in the inputs folder at position PBS_ARRAY_INDEX
+#filename=`ls -1 pheno/ | tail -n +${parameterArray[0]} | head -1`
+### get the output file
+#OUTFILE=`echo "$filename" | cut -d'.' -f1`'_chr_'${parameterArray[1]}'.out'
+##
+### 
+### the run command 
+#python ${SCRIPTDIR}/df4.2_eigenstrat_v2.py --dataset $NAME --vcffile ${CHR_VCF_INDIR}/mergedVCF_Chr${parameterArray[1]}.vcf.gz --target pheno/${filename} --pcfile mergedVCF_EigenVecs.tsv_First10PCs.npy --familyMember $MEMB > output/$OUTFILE
 #
-## 
-## the run command 
-python ${SCRIPTDIR}/df4.2_eigenstrat_v2.py --dataset $NAME --vcffile ${CHR_VCF_INDIR}/mergedVCF_Chr${parameterArray[1]}.vcf.gz --target pheno/${filename} --pcfile mergedVCF_EigenVecs.tsv_First10PCs.npy --familyMember $MEMB > output/$OUTFILE
+### step 6 ###
+# merge the results into one file
+# this is meant to be run only AFTER step 5, 
+# please comment out when running the PBS job Array
 
+datadir=output
+i=1
+for i in $(seq 1 $NPHENO)
+do
+	filename=`ls -1 pheno/ | tail -n +${i} | head -1` 
+	pheno=`echo "$filename" | cut -d'.' -f1`
+	count=1
+	hdr="Dataset CHROM POS rsID EigChi2 CochranChi2 Pval_EigChi2 Pval_CochranChi2 PWV PWV1 PWV2 FWV FWV1 FWV2 nSamples"
+	echo -e $hdr > final${pheno}.out
+	files=()
+	while [[ $count -le 22 ]]
+	do
+	        files+=(  ${datadir}/${pheno}_chr_${count}.out  )
+        	((count++))
+	done
+	files+=(  ${datadir}/${pheno}_chr_X.out  )
+	files+=(  ${datadir}/${pheno}_chr_Y.out  )
+	files+=(  ${datadir}/${pheno}_chr_M.out  )
+	cat "${files[@]}" > final${pheno}.out
+done
 
 
