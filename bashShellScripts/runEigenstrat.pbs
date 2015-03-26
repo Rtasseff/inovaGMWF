@@ -123,7 +123,7 @@ OUTFILE=`echo "$filename" | cut -d'.' -f1`'_chr_'${parameterArray[1]}'.out'
 #
 ## 
 ## the run command 
-python ${SCRIPTDIR}/df4.2_eigenstrat_v2.py —dataset $NAME —vcffile ${CHR_VCF_INDIR}/mergedVCF_Chr${parameterArray[1]}.vcf.gz —target pheno/${filename} —pcfile mergedVCF_EigenVecs.tsv_First10PCs.npy —familyMember $MEMB > output/$OUTFILE
+python ${SCRIPTDIR}/df4.2_eigenstrat_v2.py --dataset $NAME --vcffile ${CHR_VCF_INDIR}/mergedVCF_Chr${parameterArray[1]}.vcf.gz --target pheno/${filename} --pcfile mergedVCF_EigenVecs.tsv_First10PCs.npy --familyMember $MEMB > output/$OUTFILE
 
 
 
