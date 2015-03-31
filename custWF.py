@@ -297,7 +297,7 @@ def _cbat2VarTable(inPath,outPath):
 	fin.next()
 	for line in fin:
 		try:
-			tmp = line.strip().split()
+			tmp = line.strip().split('\t')
 			name = tmp[0].split(':')
 			chro = name[0]
 			pos = name[1]
