@@ -342,7 +342,7 @@ def filterTransBatch(inTablePath,outTablePath,transBatchList):
 		tmp = line.split('\t')
 		trans = 'MiAC_'+tmp[1]+'_'+tmp[0]
 		if not trans in transBatchList:
-			outTable.write()
+			outTable.write(line)
 	inTable.close()
 	outTable.close()
 
