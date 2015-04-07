@@ -1031,7 +1031,7 @@ def main():
 
 	transManifestPath = '/isb/rtasseff/data/transcripts_20141125/transcriptManifest_20141125.dat'
 
-	parseResultTables(outDir,inputPaths,phenoCodes,transManifestPath=transManifestPath,runFDR=True,runQQ=True)
+	parseResultTables(outDir,inputPaths,phenoCodes,transManifestPath=transManifestPath,runFDR=False,runQQ=False)
 
 	#### <---, Parse results tables
 
