@@ -837,7 +837,7 @@ def parseResultTables(outDir,inputPaths,phenoCodes,transManifestPath='',runFDR=T
 		# --Create folder
 		outDirTmp = outDir+'/eigenstrat'
 		_mkDir(outDirTmp)
-		outDirTmp = outDir+'/eigenstrat/F'
+		outDirTmp = outDir+'/eigenstrat/NB'
 		_mkDir(outDirTmp)
 
 		# over writing tests, so over write any readme.
@@ -989,21 +989,21 @@ def main():
 	inputPaths = {}
 	# added tags to break up jobs using the PBS job array
 	tag = int(sys.argv[1])
-	if tag==1:
+	if tag==1 or tag==0:
 		inputPaths['varPheno-FAM'] = '/isb/rtasseff/results/var_pheno_20150210/fullPWOut.dat'
-	elif tag==2:
+	if tag==2 or tag==0:
 		inputPaths['varBatch-FAM'] = '/isb/rtasseff/results/var_batch_20150204/fullPWOut.dat'
-	elif tag==3:
+	if tag==3 or tag==0:
 		inputPaths['transPheno-FAM'] = '/isb/rtasseff/results/transcript_20150216/genPW1_data_GNMC_Trans_PW_20150206_vs_data_CLIN_Critical_Phenotype_20150213_out.dat'
-	elif tag==4:
+	if tag==4 or tag==0:
 		inputPaths['transBatch-FAM'] = '/isb/rtasseff/results/transcript_20150216/genPW1_data_GNMC_Trans_PW_20150206_vs_BATCH_GNMC_20150109_out.dat'
-	elif tag==5:
+	if tag==5 or tag==0:
 		inputPaths['eigenstrat-M'] = '/isb/rtasseff/results/eig_m_20150211/OUTPUT/final$PHENOCODE$.out'
-	elif tag==6:
+	if tag==6 or tag==0:
 		inputPaths['eigenstrat-F'] = '/isb/rtasseff/results/eig_f_20150211/output/final$PHENOCODE$.out'
-	elif tag==7:
+	if tag==7 or tag==0:
 		inputPaths['eigenstrat-NB'] = '/isb/rtasseff/results/eig_nb_20150211/output/final$PHENOCODE$.out'
-	elif tag==8:
+	if tag==8 or tag==0:
 		inputPaths['cifBat-FAM'] = '/bigdata0/users/vdhankani/CIFBAT/OUTPUT/$PHENOCODE$/$PHENOCODE$Autosomal.tdt.out.gz'
 
 	# batch list paths:
